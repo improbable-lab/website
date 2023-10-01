@@ -1,0 +1,3 @@
+User-agent: *
+Disallow:
+Sitemap: https://minyoungg.github.io/mlscale/sitemap.xml

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+  xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://minyoungg.github.io/mlscale/posts/hello-world.html</loc>
+    <lastmod>2020-09-15T11:30:03+00:00</lastmod>
+  </url><url>
+    <loc>https://minyoungg.github.io/mlscale/tags/first.html</loc>
+    <lastmod>2020-09-15T11:30:03+00:00</lastmod>
+  </url><url>
+    <loc>https://minyoungg.github.io/mlscale/</loc>
+    <lastmod>2020-09-15T11:30:03+00:00</lastmod>
+  </url><url>
+    <loc>https://minyoungg.github.io/mlscale/posts.html</loc>
+    <lastmod>2020-09-15T11:30:03+00:00</lastmod>
+  </url><url>
+    <loc>https://minyoungg.github.io/mlscale/tags.html</loc>
+    <lastmod>2020-09-15T11:30:03+00:00</lastmod>
+  </url><url>
+    <loc>https://minyoungg.github.io/mlscale/categories.html</loc>
+  </url><url>
+    <loc>https://minyoungg.github.io/mlscale/series.html</loc>
+  </url>
+</urlset>
