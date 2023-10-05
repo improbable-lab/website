@@ -2,23 +2,23 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
-    <loc>https://minyoungg.github.io/mlscale-public/posts/hello-world.html</loc>
-    <lastmod>2020-09-15T11:30:03+00:00</lastmod>
+    <loc>https://minyoungg.github.io/mlscale/posts/speculative-decoding.html</loc>
+    <lastmod>2023-09-30T00:00:00+00:00</lastmod>
   </url><url>
-    <loc>https://minyoungg.github.io/mlscale-public/tags/first.html</loc>
-    <lastmod>2020-09-15T11:30:03+00:00</lastmod>
+    <loc>https://minyoungg.github.io/mlscale/tags/first.html</loc>
+    <lastmod>2023-09-30T00:00:00+00:00</lastmod>
   </url><url>
-    <loc>https://minyoungg.github.io/mlscale-public/</loc>
-    <lastmod>2020-09-15T11:30:03+00:00</lastmod>
+    <loc>https://minyoungg.github.io/mlscale/posts.html</loc>
+    <lastmod>2023-09-30T00:00:00+00:00</lastmod>
   </url><url>
-    <loc>https://minyoungg.github.io/mlscale-public/posts.html</loc>
-    <lastmod>2020-09-15T11:30:03+00:00</lastmod>
+    <loc>https://minyoungg.github.io/mlscale/</loc>
+    <lastmod>2023-09-30T00:00:00+00:00</lastmod>
   </url><url>
-    <loc>https://minyoungg.github.io/mlscale-public/tags.html</loc>
-    <lastmod>2020-09-15T11:30:03+00:00</lastmod>
+    <loc>https://minyoungg.github.io/mlscale/tags.html</loc>
+    <lastmod>2023-09-30T00:00:00+00:00</lastmod>
   </url><url>
-    <loc>https://minyoungg.github.io/mlscale-public/categories.html</loc>
+    <loc>https://minyoungg.github.io/mlscale/categories.html</loc>
   </url><url>
-    <loc>https://minyoungg.github.io/mlscale-public/series.html</loc>
+    <loc>https://minyoungg.github.io/mlscale/series.html</loc>
   </url>
 </urlset>
