@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en" dir="auto">
+
+<head><meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<meta name="robots" content="index, follow">
+<title>Critical batch-size in deep learning | </title>
+<meta name="keywords" content="first" />
+<meta name="description" content="What batch-size should you use for your model? What does the batch-size tell you about your task? This post discusses one main aspects of the scaling law.">
+<meta name="author" content="
+Author: &nbspMinyoung Huh
+&nbsp | &nbsp Editor: &nbspN/A">
+<link rel="canonical" href="https://canonical.url/to/page" />
+<link crossorigin="anonymous" href="https://minyoungg.github.io/mlscale/assets/css/stylesheet.min.012b9a75b78c05a5b3111bea2ffe80bb9c7a658de709126230287fb6db7016a7.css" integrity="" rel="preload stylesheet" as="style">
+<link rel="icon" href="https://minyoungg.github.io/mlscale/favicon.ico">
+<link rel="icon" type="image/png" sizes="16x16" href="https://minyoungg.github.io/mlscale/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="https://minyoungg.github.io/mlscale/favicon-32x32.png">
+<link rel="apple-touch-icon" href="https://minyoungg.github.io/mlscale/apple-touch-icon.png">
+<link rel="mask-icon" href="https://minyoungg.github.io/mlscale/safari-pinned-tab.svg">
+<meta name="theme-color" content="#2e2e33">
+<meta name="msapplication-TileColor" content="#2e2e33">
+<meta name="generator" content="Hugo 0.92.2" />
+<noscript>
+    <style>
+        #theme-toggle,
+        .top-link {
+            display: none;
+        }
+
+    </style>
+</noscript><meta property="og:title" content="Critical batch-size in deep learning" />
+<meta property="og:description" content="What batch-size should you use for your model? What does the batch-size tell you about your task? This post discusses one main aspects of the scaling law." />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://minyoungg.github.io/mlscale/posts/critical-batch-size.html" /><meta property="og:image" content="https://minyoungg.github.io/mlscale/papermod-cover.png"/><meta property="article:section" content="posts" />
+<meta property="article:published_time" content="2023-11-01T11:30:03&#43;00:00" />
+<meta property="article:modified_time" content="2023-11-01T11:30:03&#43;00:00" />
+
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:image" content="https://minyoungg.github.io/mlscale/papermod-cover.png"/>
+
+<meta name="twitter:title" content="Critical batch-size in deep learning"/>
+<meta name="twitter:description" content="What batch-size should you use for your model? What does the batch-size tell you about your task? This post discusses one main aspects of the scaling law."/>
+
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position":  1 ,
+      "name": "Critical batch-size in deep learning",
+      "item": "https://minyoungg.github.io/mlscale/posts/critical-batch-size.html"
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Critical batch-size in deep learning",
+  "name": "Critical batch-size in deep learning",
+  "description": "What batch-size should you use for your model? What does the batch-size tell you about your task? This post discusses one main aspects of the scaling law.",
+  "keywords": [
+    "first"
+  ],
+  "articleBody": "   In this post, I’ll discuss the concept of the critical batch size, which is vital for both understanding stochastic optimization and improving distributed training efficiency. The primary focus of this blog will be on the research presented in An Empirical Model of Large-Batch Training with a more deep dive into their dervaitons. I’ve chosen this work primarily because of its digestible mathematical derivations and empirical results that align closely with contemporary large-scale experiments.\n Introduction Why do we use stochastic optimization? In an introductory machine learning class, students are introduced to the concept of gradient descent. However, shortly after our first assignment on training neural networks, we’re guided away from gradient descent in favor of its stochastic counterpart. Reflecting on this, I realized it was a transition made without concrete justification other than the vague explanataion that “it converges faster and better.”\nToday, we regard stochastic gradient descent (along with its adaptive variants like Adam(W), Adafactor, K-FAC, etc.) as the standard optimization method for training deep networks. Yet, we seldom question the rationale behind these choices. Often, we simply adopt batch sizes and learning rates from academic papers and code repositories without much contemplation. Even as a PhD student in ML, I too have spend a fair share using stochastic optimization without considering its implications. For simplicity’s sake, I’ll interchangeably use stochastic gradient descent (SGD) with mini-batch gradient descent, since mini-batch of size one is SGD.\nFor the purpose of this blog, I went around asking a simple question to my colleagues: “Why do we use mini-batch training?” I gathered varying responses with most common ones being:\n Small batches are a result of being memory constraints. The noise in mini-batches aids regularization. Mini-batches see more, so they can learn more. “I’m not sure; someone advised me to use it.”  While these response are not wrong, per se, I was able to sense a tone of uncertainty, even among the brightest peers. While a deep grasp isn’t necessary for most academic research, I believe that an appropriate understanding of this topic is important when scaling up or trying to reason through our experimental results.\nSo … what does it do exactly then?\nFrom your personal experiences with training deep neural networks, you might’ve noticed that varying the batch size impacts the final performance and convergence speeds. Increasing the batch size often accelerates training but not always! Too small of a batch-size and the model no longer trains. We will explore certains aspects of these observation through lens of critical batch-size. For a concise takeaway if you want to skip over the math, the key points are:\n Learning rate is contingent on batch size. Whenever you adjust the batch size, retune your learning rate. Increasing the batch size yields diminishing returns. To optimize your model’s throughput, select a batch size for computational efficiency rather than to merely utilize all GPU memory.   What is critical batch-size and why care? Deep learning thrives on scale. Given the immense empirical capabilities of large models, distributed training has become an indispensable component of deep learning research. Distributed learning aims to spread computational workload to “maximize” the throughput of training examples. This system-level optimization is facilitated through data-parallelism, model-parallelism, and pipeline parallelism.\n A Brief Detour for Definitions   Data-parallelism: Multiple GPUs or nodes train on different subsets of data using the same model. Each device computes its gradients, which are then averaged and applied to update the model.   Model-parallelism: A model is segmented across multiple GPUs or nodes, with each GPU hosting a layer or a group of layers. This approach is particularly beneficial for vast models that can't reside on a single GPU.   Pipeline-parallelism: The forward and backward passes of a neural network are partitioned into stages, similar to model-parallelism. Data is partitioned into a queue, and pipielined through each stage (GPU device). The GPU processes the input and passes it along to the next GPU, and processes the next data partition. This setup ensures multiple batches are processed at varying stages concurrently, optimizing GPU utilization.     These parallelism types can be combined, but in academia, data-parallelism remains predominant. However, open-source libraries like PyTorch FSDP, DeepSpeed, HuggingFace, and Megatron are making the amalgamation of all three more feasible. Integrating these techniques allows one to train LLMs, which would have spanned 30 years, in just a month.\nThe topic of critical batch size revolves around data-parallelism, asking the question: “what is the compute/time-optimal batch-size?\" To answer this question, lets think about our standard workflow.\nWhen training models, two primary hyperparameters are the learning rate and the batch size. The tuning protocol is sequential:\n We first pick some arbitrary batch-size and then Sweep across the learning-rate that gives us the best empirical result.   It’s crucial to note that the optimal learning rate fluctuates based on the batch size. And while the choice of batch size is often driven by the urge to fully utilize GPU memory, is this heuristic correct in the first place? \nWhen playing around with the batch-size we observe the following: smaller batches converge slowly, larger ones are faster, and an excessively large batch sizes slows it again. In academia, we often don’t see the third regime unless we have A100/H100 at our disposal.\nHere the convergence speed can be seen as a tandem interplay between how well your GPU can parallelize the computation, and the number of gradient steps required to train the model. With more GPUs one can leverage bigger batches which minimizes training time for compute cost. In contrast, using a single GPU we can use small mini-batches but take “years” to train the model. The work of McCandlish et al. investigates what would be the perfect trade-off between compute budget and training speed.\nFigure 1. of McCandlish et al. Blue box is where we want to be. I will be using the derivation proposed in the aforementioned paper to motivate the problem with some slight massaging to make it easier to explain. The goal of critical batch-size is to understand what the optimal batch-size one should use given a compute/time budget. Doing so allows one to maximally and optimally allocate their computation budget.\n  Gradient descent and optimal learning rate  First, let's dive into how how to compute the optimal learning rate for full-batch gradient descent.   Proof sketch:  Take a small perturbation as a function of the learning rate \\( \\eta \\) and solve for what the optimal \\( \\eta \\) should have been.  Let us denote \\(G(\\theta)\\) be the gradient computed from the full batch, where we will drop \\( \\theta \\) and use \\(G\\) for clarity. We first take an infinitesimal step along the negative gradient; this guarantees that our training loss is lower in the next iteration. This is only true in a full-batch setting, and for stochastic gradient descent, this is true on expectation.  How big should this infinitesimal perturbation be? If we take too small of a step, we would be moving along the same direction in the next iteration and would have wasted a forward-backward compute cycle. Too big, and our training loss would increase.  In optimization theory, the optimal learning rate can be analytically solved, albeit being very computationally expensive. One can also speed it up using line-search methods such as backtracking line search or Wolfe condition that use various heuristics for efficient estimation.  In deep learning, we take a more trial-and-error approach, where we try random learning rates until we stumble upon the hyperparameter that works the best. This is considered to be more cost-efficient than computing the exact step-size.  For now, let's analytically solve for the learning rate \\( \\eta_{\\mathsf{max}} \\). To do so, we will use the second-order Taylor expansion. Assume we take a tiny perturbation \\( \\Delta \\theta \\) around the model parameter \\( \\theta \\).  $$ \\mathcal{L}(\\theta + \\Delta \\theta) \\approx \\mathcal{L}(\\theta) + G^T \\Delta \\theta - \\frac{1}{2} \\Delta \\theta^T H \\Delta \\theta $$   Where \\(H\\) is the Hessian of the model. If we set the perturbation to be the negative gradient times some learning rate, \\( \\Delta \\theta = - \\eta G \\), we arrive at:  $$ \\mathcal{L}(\\theta + \\Delta \\theta) \\approx \\mathcal{L}(\\theta) - \\eta G^T G + \\frac{1}{2} \\eta ^2 G^T H G $$   Taking the derivative with respect to the learning rate \\(\\eta\\) and setting it to zero, we find that the optimal step size \\(\\eta_{\\mathsf{max}}\\) should be:  $$ \\begin{aligned} \u0026\\frac{\\partial}{\\partial \\eta} \\left( \\mathcal{L}(\\theta) - \\eta G^T G + \\frac{1}{2} \\eta ^2 G^T H G \\right) = 0\\\\ \u0026 - G^T G + \\eta G^T H G = 0 \\\\ \u0026 \\eta_{\\mathsf{max}} = \\frac{\\lvert G \\rvert^2}{ G^T H G} \\end{aligned} $$   The optimal learning rate directly depends on the Hessian around the parameter \\( \\theta \\). Computing this is not only costly, but it also needs to be recomputed at every iteration.  The denominator depends on the curvature. Hence, based on the Hessian of the current parameter, the optimal learning rate could vary drastically. Common adaptive optimizers used today can be thought of as trying to approximate some information about the curvature \\( H \\) in a cost-efficient manner.  Great! We now know how to compute the optimal learning rate for full-batch gradient descent, but this doesn't tell us what the optimal learning rate should be for stochastic gradient descent methods. We now extend our analysis to SGD.  Extension to stochastic gradient descent We would like to know how the optimal learning rate of full-batch gradient descent relates to that of mini-batch gradient descent. The only variable that differentiates the two is the mini-batch size \\(B\\). Hence, we would like to determine the relationship \\(f(B)\\), if any, that relates these two terms:\n $$ \\eta_{\\mathsf{max}} = f(B) \\cdot \\eta_{\\mathsf{sgd}} $$   Our goal is to apply a similar analysis technique using the second-order Taylor expansion, but in the stochastic setting.  $$ \\begin{aligned} \\mathbb{E} \\left[ \\mathcal{L}(\\theta + \\eta G_{\\mathsf{sgd}}) \\right] \u0026= \\mathbb{E}\\left[ \\mathcal{L}(\\theta) - \\eta G_{\\mathsf{sgd}}^T G + \\frac{1}{2} \\eta ^2 G_{\\mathsf{sgd}}^T H G_{\\mathsf{sgd}} \\right] \\\\ \u0026= \\mathbb{E}\\left[ \\mathcal{L}(\\theta) \\right] - \\mathbb{E}\\left[\\eta G_{\\mathsf{sgd}}^T G\\right] + \\mathbb{E}\\left[\\frac{1}{2} \\eta ^2 G_{\\mathsf{sgd}}^T H G_{\\mathsf{sgd}} \\right] \\\\ \u0026= \\mathcal{L}(\\theta) - \\eta \\mathbb{E}\\left[ G_{\\mathsf{sgd}}^T \\right] G + \\frac{\\eta ^2}{2} \\mathbb{E}\\left[ G_{\\mathsf{sgd}}^T H G_{\\mathsf{sgd}} \\right] \\\\ \\end{aligned} $$  To compute the expectations of the second and the third term, we need to know the expectation and the variance of the mini-batch gradients \\( G_{\\mathsf{sgd}} \\).\nMini-batch expectation and variance   $$ G_{\\mathsf{sgd}}(\\theta) = \\frac{1}{B} \\sum_{i=1}^B \\nabla_{\\theta} l(\\theta) \\quad \\text{where} \\quad x_i \\sim \\mathcal{X}_{\\mathsf{train}} $$  Since we sample the data points uniformly at random from the training distribution \\( \\mathcal{X} \\), the gradient \\( G_{\\mathsf{sgd}}\\) becomes a random variable. Since the mini-batch sampled i.i.d. from the data distribution is unbiased, the expectation of the R.V is the true gradient:\n $$ \\mathbb{E}_{ x_{1} \\dots x_{B} \\sim\\mathcal{p}} [ G_{\\mathsf{sgd}}] = G $$  The covariance of the mini-batch informs us about the accuracy of the estimate relative to the true gradient. Under the assumption \\(B \\ll D\\); the relationship is described as follows:\n $$ \\mathrm{Cov}_{ x_{1} \\dots x_{B} \\sim\\mathcal{p}} [ G_{\\mathsf{sgd}}] = \\Sigma_{\\mathsf{sgd}} = \\frac{1}{B} \\Sigma $$   Where the per-sample covariance matrix \\( \\Sigma \\) is:  $$ \\Sigma = \\mathbb{E}_{ x \\sim\\mathcal{p}}[G_{\\mathsf{sgd}} G_{\\mathsf{sgd}}^T] - \\lvert \\mathbb{E}_{ x \\sim\\mathcal{p}}[G_{\\mathsf{sgd}}] \\rvert ^2 = \\mathbb{E}_{ x \\sim\\mathcal{p}}[G_{\\mathsf{sgd}} G_{\\mathsf{sgd}}^T] - GG^T \\\\ $$  We observe that the variance of the mini-batch scales inversely with the per-sample variance.\n Now lets resume with the calculations above:\n $$ \\begin{aligned} \\mathbb{E} \\left[ \\mathcal{L}(\\theta + \\eta G_{\\mathsf{sgd}}) \\right] \u0026= \\mathcal{L}(\\theta) - \\eta \\mathbb{E}\\left[ G_{\\mathsf{sgd}}^T \\right] G + \\frac{\\eta ^2}{2} \\mathbb{E}\\left[ G_{\\mathsf{sgd}}^T H G_{\\mathsf{sgd}} \\right] \\\\ \\end{aligned} $$  Where the second term is:\n $$ \\eta \\mathbb{E}\\left[ G_{\\mathsf{sgd}}^T \\right] G = \\eta G^T G = \\eta \\lvert G \\rvert^2 $$   The third term is more involved:  $$ \\begin{aligned} \\frac{\\eta ^2}{2} \\mathbb{E}\\left[ G_{\\mathsf{sgd}}^T H G_{\\mathsf{sgd}} \\right] \u0026= \\frac{\\eta ^2}{2} trace\\left( G_{\\mathsf{sgd}}^T H G_{\\mathsf{sgd}} \\right) \\\\ \u0026= \\frac{\\eta ^2}{2} trace\\left( H G_{\\mathsf{sgd}}^T G_{\\mathsf{sgd}} \\right) \\\\ \u0026= \\frac{\\eta ^2}{2} trace\\left( H \\left( \\Sigma_{\\mathsf{sgd}} + \\mathbb{E}\\left[G_{\\mathsf{sgd}}^T\\right] \\mathbb{E}\\left[G_{\\mathsf{sgd}}\\right] \\right) \\right) \\\\ \u0026= \\frac{\\eta ^2}{2} trace\\left( H \\left( \\Sigma_{\\mathsf{sgd}} + G^T G \\right) \\right) \\\\ \u0026= \\frac{\\eta ^2}{2} \\left( trace\\left( H \\Sigma_{\\mathsf{sgd}} \\right) + trace\\left( H G^T G \\right) \\right) \\\\ \u0026= \\frac{\\eta ^2}{2} \\left( \\frac{trace\\left( H \\Sigma \\right)}{B} + trace\\left( G^T H G \\right) \\right) \\\\ \u0026= \\frac{\\eta ^2}{2} \\left( \\frac{trace\\left( H \\Sigma \\right)}{B} + \\mathbb{E}\\left[ G^T H G \\right] \\right) \\\\ \u0026= \\frac{\\eta ^2}{2} \\left( G^T H G + \\frac{trace\\left( H \\Sigma \\right)}{B} \\right) \\end{aligned} $$   Putting it all together we arrive at the equation in the paper:  $$ \\begin{aligned} \\mathbb{E} \\left[ \\mathcal{L}(\\theta + \\eta G_{\\mathsf{sgd}}) \\right] = \\mathcal{L}(\\theta) - \\eta \\lvert G \\rvert^2 + \\frac{\\eta ^2}{2} \\left( G^T H G + \\frac{trace\\left( H \\Sigma \\right)}{B} \\right) \\\\ \\end{aligned} $$   Taking the derivative to solve for the largest \\( \\eta \\) we have:  $$ \\eta_{\\mathsf{opt}} = \\frac{1 }{1 + \\mathcal{B}_{\\mathsf{noise}}/B} \\eta_{\\mathsf{max}}\\qquad \\text{where} \\quad \\mathcal{B}_{\\mathsf{noise}} = \\frac{trace(H\\Sigma)}{G^T H G} $$   Which results in an optimal improvement of (plug in \\( \\eta_{\\mathsf{opt}} \\) back into the equation):  $$ \\Delta \\mathcal{L}_{\\mathsf{opt}} = \\frac{1}{1 + \\mathcal{B}_{\\mathsf{noise}}/B}\\Delta \\mathcal{L}_{\\mathsf{max}} \\qquad \\text{where} \\quad \\Delta \\mathcal{L}_{\\mathsf{max}} = \\frac{1}{2}\\frac{\\lvert G \\rvert ^4}{G^T H G} $$  When the batch-noise is zero, we obtain the maximum learning rate of full-batch descent. In the small mini-batch regime, where \\(\\mathcal{B}_{\\mathsf{noise}} \\gg B\\), increasing the batch size linearly improves the progress in training loss. However, as the batch size approaches the large batch regime and \\(\\mathcal{B}_{\\mathsf{noise}} \\ll B\\), the second term in the denominator approaches 0, leading to diminishing returns. See figure below that illustrates this point: Figure 3. of McCandlish et al. Blue box is where we want to be.\nWe define the critical batch size as the point where we cease to observe linear improvement from increasing the batch size. This is the point at which training speed reduces to 50% when \\(\\mathcal{B}_{\\mathsf{noise}} \\approx B\\). We will provide a more concrete definition in the next section.\nIn summary, the batch-noise \\(\\mathcal{B}_{\\mathsf{noise}} \\) is influenced by the optimization landscape characterized by the gradient \\( G \\) and the \\( H \\). The optimization landscape is contingent on both the task and the architecture. Consequently, the optimal batch size will vary if any of these parameters are altered. Assessing the batch-noise provides insights into the complexity of the task, informativeness of the data point with respect to the task, and efficiency of your model to leverage more data.   Estimating compute optimal batch-size We defined the critical batch size as the point where \\( B \\approx \\mathcal{B}_{\\mathsf{noise}} \\). Given this batch-noise, we now aim to determine how to select the optimal batch size.\nFirst, let's introduce a few new terms:\n \\(S\\)- the actual number of steps. \\(E\\)- the actual number of training samples. \\(S_{\\mathsf{min}}\\)- the minimum number of steps required to achieve a specific performance level. \\(E_{\\mathsf{min}}\\)- the minimum number of samples needed to attain a particular performance level.  Our objective is to determine whether to increase or decrease the batch size for maximum efficiency, which is determined by your hardware configuration and time constraints for computation. To do so for a given training paradigm, one would need to understand the exchange rate, \\( r \\), which equates the relationship between number of training samples with training steps as a function of batch-size:\n $$ r = -\\frac{\\frac{\\partial d}{\\partial B} \\delta E}{\\frac{\\partial d}{\\partial B} \\delta S} $$   Previously, we demonstrated that the change in loss for the full-batch gradient, \\( \\Delta \\mathcal{L}_{\\mathsf{max}} \\), scales directly with \\( {1 + \\mathcal{B}_{\\mathsf{noise}}/B} \\) in relation to the optimal mini-batch loss \\( \\Delta \\mathcal{L}_{\\mathsf{opt}} \\) for a given batch size \\( B \\). This suggests that by employing a mini-batch of size \\( B \\), our progression will deviate from the \"ideal\" gradient descent trajectory by a small delta, which scales with \\( {1 + \\mathcal{B}_{\\mathsf{noise}}/B} \\).  Under the simplifying assumption that the change in loss is directly proportional to the number of steps required for convergence, the number of steps needed for training would scale with \\( 1 + \\mathcal{B}_{\\mathsf{noise}}/B \\). Furthermore, given that the number of samples is related by \\( E = BS \\), we can write out its respective deltas as:  $$ \\delta S = 1 + \\frac{\\mathcal{B}_{\\mathsf{noise}}}{B} \\qquad \\text{and} \\qquad \\delta E = B \\delta S $$   Plugging it back into the exchange rate \\( r \\) we have:  $$ r = -\\frac{\\frac{\\partial d}{\\partial B} \\delta E}{\\frac{\\partial d}{\\partial B} \\delta S} = - \\frac{\\frac{\\partial d}{\\partial B} B (1 + \\frac{\\mathcal{B}_{\\mathsf{noise}}}{B})}{\\frac{\\partial d}{\\partial B} \\left( 1 + \\frac{\\mathcal{B}_{\\mathsf{noise}}}{B}\\right)} = -\\frac{1}{-\\mathcal{B}_{\\mathsf{noise}} B^{-2}} = \\frac{B^2}{\\mathcal{B}_{\\mathsf{noise}}} $$  Further rearranging the terms reveals the following relationship:\n $$ B(s) = \\sqrt{r \\mathcal{B}_\\mathsf{noise}(s)} $$  This implies that one should select the batch size in proportion to the square root of the noise scale. It's essential to note that \\( r \\) is a design choice, allowing us to determine whether we want to prioritize sample complexity or compute complexity.\n Next, we will leverage this relationship to equate the number of training steps \\( S \\) with the number of examples \\( E \\).  The total number of steps and the examples processed can be represented as the integral of the quantities \\( \\delta S \\) and \\( \\delta E \\) defined previously:\n $$ \\begin{aligned} S \u0026= \\int \\delta S = \\int \\left( 1 + \\frac{\\mathcal{B_{\\mathsf{noise}}(s)}}{B(s)} \\right) ds \\\\ E \u0026= \\int \\delta E = \\int B \\delta S = \\int B \\left( 1 + \\frac{\\mathcal{B_{\\mathsf{noise}}(s)}}{B(s)} \\right) = \\int \\left( \\mathcal{B_{\\mathsf{noise}}(s)} + B(s) \\right) ds \\\\ \\end{aligned} $$   Where \\( s \\) denotes the training iteration.  By substituting the batch-to-noise-scale relationship \\( B(s) = \\sqrt{r \\mathcal{B}_\\mathsf{noise}(s)} \\) into the \\( S \\) and \\( E \\) integrals, we get:  $$ \\begin{aligned} S_{\\mathsf{tot}} \u0026= \\int \\left( 1 + \\frac{\\mathcal{B_{\\mathsf{noise}}(s)}}{\\sqrt{r \\mathcal{B}_\\mathsf{noise}(s)}} \\right) ds \\\\ \u0026= S_{\\mathsf{min}} + r^{-1/2} \\int \\sqrt{\\mathcal{B}_\\mathsf{noise}(s)} ds \\\\ E_{\\mathsf{tot}} \u0026= \\int \\left( \\mathcal{B_{\\mathsf{noise}}(s)} + \\sqrt{r \\mathcal{B}_\\mathsf{noise}(s)} \\right) ds \\\\ \u0026= E_{\\mathsf{min}} + r^{1/2} \\int \\sqrt{\\mathcal{B}_\\mathsf{noise}(s)} ds \\\\ \\end{aligned} $$   As \\( r \\) is a free variable, we rearrnage and solve for \\( r \\) for both equations:  $$ \\frac{S_{\\mathsf{min}}}{\\phi} \\left( \\frac{S_{\\mathsf{tot}}}{S_{\\mathsf{min}}} - 1 \\right) = r^{1/2} \\\\ \\left( \\frac{E_{\\mathsf{min}}}{\\phi} \\left( \\frac{E_{\\mathsf{tot}}}{E_{\\mathsf{min}}} - 1 \\right) \\right)^{-1} = r^{1/2} $$   Where \\( \\phi = \\int \\sqrt{\\mathcal{B}_\\mathsf{noise}(s)} ds \\). Equating both sides by \\( r \\), we arrive at the sought-after relationship:  $$ \\frac{S_{\\mathsf{min}}}{\\phi} \\left( \\frac{S_{\\mathsf{tot}}}{S_{\\mathsf{min}}} - 1 \\right) = \\left( \\frac{E_{\\mathsf{min}}}{\\phi} \\left( \\frac{E_{\\mathsf{tot}}}{E_{\\mathsf{min}}} - 1 \\right) \\right)^{-1} \\\\ $$  And with more massaging:\n $$ \\left( \\frac{S_{\\mathsf{tot}}}{S_{\\mathsf{min}}} - 1 \\right) = \\gamma \\left( \\frac{E_{\\mathsf{tot}}}{E_{\\mathsf{min}}} - 1 \\right)^{-1} \\quad \\text{where} \\quad \\gamma = \\frac{\\left(\\int \\sqrt{\\mathcal{B}_\\mathsf{noise}(s)} ds \\right)^2}{S_{\\mathsf{min}}E_{\\mathsf{min}}} $$   Here \\( \\gamma \\) characterizes the variation in the noise-scale throughout training. If there's significant variation in \\( \\gamma \\), one can expect to see large convergence speed benefits by adjusting the batch size over training.  If we choose not to eliminate \\( r \\) from both sides but instead set \\( r = \\frac{E_{\\mathsf{min}}}{S_{\\mathsf{min}}} \\), we arrive at the following relationship:  $$ \\frac{S_{\\mathsf{tot}}}{S_{\\mathsf{min}}} = \\frac{E_{\\mathsf{tot}}}{E_{\\mathsf{min}}} = 1 + \\sqrt{\\gamma} $$   Given this choice of \\( r \\), both cost efficiency and time efficiency are optimally balanced within the same factor. This is the empirical critical batch-size:  $$ \\begin{aligned} \\frac{E_{\\mathsf{min}}}{S_{\\mathsf{min}}} = B_{\\mathsf{crit}} \\approx \\mathcal{B}_{\\mathsf{noise}} \\end{aligned} $$  The second inequality is from our definition of critical batch-size, where we defined it to be the point in which the number of training steps and number of training samples is balanced.\n How to compute batch-noise scale efficiently? The critical batch size can be computed as an empirical fit to the data and is proportional to the batch noise. However, calculating it is very resource-intensive. One would need to sweep through all potential hyperparameters for a given batch size to determine the minimum number of samples required and then perform another sweep to determine the minimum number of steps. Is there an efficient alternative that is a good proxy for measuring batch-noise? Lets consider the optimal analytical step-size we derived above:\n $$ \\mathcal{B}_{\\mathsf{noise}} = \\frac{trace(H\\Sigma)}{G^T H G} $$  Computing the Hessian \\( H \\) is the resource-intensive component that makes it infeasible to calculate the batch-noise analytically. The authors suggest making a simplifying assumptions that the Hessian is a constant factor of an identity matrix. This assumption implies a benign optimization landscape that is convex, constant curvature, and independent across parameters, which is almost never true in practice. But using this simplification we arrive at:\n $$ \\mathcal{B}_{\\mathsf{simple}} = \\frac{trace(\\Sigma)}{\\lvert G \\rvert^2} $$  Where the numerator represents the sum of the variances of the individual gradient components, and the denominator is the global norm of the gradient.\n $$ \\mathcal{B}_{\\mathsf{simple}} = \\frac{trace(\\Sigma)}{\\lvert G \\rvert^2} = \\frac{\\mathbb{E} [ | G_{\\mathsf{sgd}} - G|^2 ]}{ | G |^2} $$  This simplified measure allows us to feasibly calculate the batch-noise throughout training. If the dataset is small, one can compute the exact \\( G \\). Alternatively, if the dataset is too big, one can estimate \\( G_{\\mathsf{sgd}} \\) and \\( G \\) using a small mini-batch and a larger mini-batch.\n In distributed training framework, one can estimate this quantity with almost zero overhad. The gradients from a single device can be used as \\( G_{\\mathsf{sgd}} \\), and the accumulated gradient as \\( G \\). This approximation requires averaging of multiple batches to obtain an unbiased estimate.   Results  We now go over some of the results.  Is the simplification a good approximation? \n Firstly, we examine the adequacy of the simplification, \\( \\mathcal{B}_{\\mathsf{simple}} \\), as an indicator for the critical batch-size. Authors' analysis reveals that while it does trace the trend accurately, it tends to overestimate by a factor of 10. Nonetheless, this general trajectory remains consistent across various tasks, as highlighted in the paper. Furthermore, when aiming for a particular validation loss, the trade-off between batch size and training steps appears to be consistent, as evidenced by the Pareto frontier curves. This suggests that if we target a specific loss value, the relationship between batch size and training steps remains consistent. Figure 7. of McCandlish et al.  How does the noise scale vary with tasks? \n The gradient noise scale seems to fluctuate based on the task. Drawing from intuitive understanding regarding task complexity, it's reasonable to infer that as task complexity rises, the gradient noise scale would follow suit. This aligns with the notion that for more intricate tasks, the critical batch size would be larger — necessitating more data samples to facilitate an accurate update. Figure 4. of McCandlish et al.  Does the noise scale vary with model architecture? \nLastly, observations indicate that the gradient noise scale remains relatively consistent across different parameter sizes within the same model family, as illustrated by the LSTM in the subsequent figure. Moreover, the gradient noise scale's progression throughout training appears to exhibit a consistent trend, across various model sizes.\nFigure 8. of McCandlish et al. There are a lot of results I skipped over, and I do suggest going through the paper on your own time.  Additional results from Shallue et al.\nMeasuring the Effects of Data Parallelism on Neural Network Training parallel is a concurrent work that ran extensive empirical experiments on critical batch-size. Here I list some of the key findings of the work that I found interesting (I put section/page reference if you want to jump directly to it):\n Some models can exploit much larger batch sizes than others (Section 4.3):  Transformer  LSTMs CNNs  MLPs ResNets  VGG   Momentum extends perfect scaling to larger batch sizes (Section 4.4) The dataset matters (Section 4.5) Regularization can be more helpful at some batch sizes than others (Section 4.6) The best learning rate and momentum vary with batch size (Section 4.7)   A mathematical investigation for why adaptive methods like K-FAC have even larger critical batch-size is investigated in Which Algorithmic Choices Matter at Which Batch Sizes? Insights From a Noisy Quadratic Mode  With increasing batch size, the region in metaparameter space corresponding to rapid training in terms of epochs becomes smaller, while the region in metaparameter space corresponding to rapid training in terms of step-count grows larger (Page 24, Figure 9) Smaller Transformer models have larger stable learning rates (Page 25, Figure 10) Solution quality depends on compute budget more than batch size (Page 26, Figure 11)   $$ g = \\eta \\left( \\frac{N}{B} - 1\\right) , $$   where \\( g \\) is the noise scale, \\( N \\) is the training set size, and \\( B \\) is the batch-size.\nBuilding on this, Smith et al.'s subsequent paper, [Don't Decay the Learning Rate, Increase the Batch Size](https://arxiv.org/pdf/1711.00489.pdf), suggests increasing the batch size instead of reducing the learning rate. This approach allows for sub-hour ImageNet training on Inception-ResNet-V2. Figure 6. of Smith et al. Inception-ResNet-V2 on ImageNet.   -- Scaling law The follow up work on Kaplan and McCandlish et al. in Scaling Laws for Neural Language Models. In their work, they established a power-law relationship using smaller transformer models to make predictions about the behavior of larger GPT models. Their power-law equation is:\n $$ B_{\\mathsf{crit}}(L) \\approx B^* \\cdot {L^{-\\alpha}} $$  Where:\n  \\( B^* \\) is the initial batch-size, valued at \\( 2 \\times 10^8 \\).\n  \\( \\alpha \\) is the power-law exponent, which I recalculated to be approximately \\( 4.7619 \\) to align the equation with the conventional power-law format.\n  Figure 10. of Kaplan et al. Critical batch-size of transformer models of varying sizes are consistent.   Given a specific loss \\( L \\), one can use this equation to determine the optimal batch size. As training continues and the model loss reduces, the critical batch size adjusts according to this power-law relationship. By using the critical batch size, one can utilize larger batch sizes to be more efficient as the training progresses, enabling more data parallelism.  From the \\( B_{\\mathsf{crit}}(L) \\) relationship, we can also determine the optimal number of steps for convergence:  $$ S_{\\mathsf{min}}(S) = \\frac{S}{1 + B_{\\mathsf{crit}}(L)/B} $$   Optimal performance is achieved when \\( B \\gg B_{\\mathsf{crit}} \\). Extending this analysis, one can ascertain the compute-optimal batch size (where \"compute-optimal\" refers to minimizing total computational operations or flops). Given a model size \\( N \\), the total number of flops is roughly \\( C = 6NBS \\) for batch size \\( B \\). Thus, the compute cost required is:  $$ C_{\\mathsf{min}}(C) = \\frac{C}{1 + B/B_{\\mathsf{crit}}(L)} $$   Conversely, the minimum computation happens when \\( B \\ll B_{\\mathsf{crit}} \\). The ideal scenario is neither purely step-optimal \\( S_{\\mathsf{min}} \\) nor compute-optimal \\( C_{\\mathsf{min}} \\), but rather a balanced trade-off between the two. This is achieved when \\( B = B_{\\mathsf{crit}} \\), striking the right balance between computational efficiency and training time, as discussed throughout this post. The concept of critical batch-size naturally fits into the study of scaling law. Scaling laws is a topic I enjoy deeply. However, delving too deep might be overwhelming for this blog post. If you’re keen to learn more, here are some recommended readings:\n Deep Learning Scaling is Predictable, Empirically Scaling Laws for Neural Language Models Scaling laws for autoregressive generative modeling Training Compute-Optimal Large Language Models Train big, then compress: Rethinking model size for efficient training and inference of transformers Critical Parameters for Scalable Distributed Learning with Large Batches and Asynchronous Updates  If time permits, I will write a follow-up post on scaling laws in the future.\n Some fascinating observations from some of these works: Given the same compute budget, its better to train a larger model and stop training early than to train the small model to convergence. Large models are easier to fine-tune, and better for quantization. \n Additional Relevant Works The subject of critical batch-size has garnered significant attention in the research community. For those interested in further exploration, here are some noteworthy studies:\n Stochastic Training is Not Necessary for Generalization The Power of Interpolation: Understanding the Effectiveness of SGD in Modern Over-parametrized Learning Gradient Diversity: a Key Ingredient for Scalable Distributed Learning Parallelizing Stochastic Gradient Descent for Least Squares Regression: Mini-batching, Averaging, and Model Misspecification  These studies provide mathematical insights for anyone looking to gain a deeper understanding of the topic.\n  Conclusion Unraveling the nuances of the critical batch-size sheds light on the intricate relationship between deep learning optimization and scalable training. It’s not just a guideline for efficient distributed training, but also a core facet in the science of deep learning. It prompts us to rethink our data curation strategies, model design choices, optimization designs, and even curriculum learning? In my opinion, these works offer insights beyond what it was originally marketed for.\n",
+  "wordCount" : "4703",
+  "inLanguage": "en",
+  "datePublished": "2023-11-01T11:30:03Z",
+  "dateModified": "2023-11-01T11:30:03Z",
+  "author":{
+    "@type": "Person",
+    "name": "Minyoung Huh"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://minyoungg.github.io/mlscale/posts/critical-batch-size.html"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://minyoungg.github.io/mlscale/favicon.ico"
+    }
+  }
+}
+</script>
+</head>
+
+<body class=" dark" id="top">
+<script>
+    if (localStorage.getItem("pref-theme") === "light") {
+        document.body.classList.remove('dark')
+    }
+
+</script>
+
+<header class="header">
+    <nav class="nav">
+        <div class="logo">
+            <span class="logo-switches">
+                <button id="theme-toggle" accesskey="t" title="(Alt + T)">
+                    <svg id="moon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                    <svg id="sun" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="5"></circle>
+                        <line x1="12" y1="1" x2="12" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="23"></line>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                        <line x1="1" y1="12" x2="3" y2="12"></line>
+                        <line x1="21" y1="12" x2="23" y2="12"></line>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                </button>
+            </span>
+        </div>
+        <ul id="menu">
+        </ul>
+    </nav>
+</header>
+<main class="main">
+
+<article class="post-single">
+  <header class="post-header">
+    <div class="breadcrumbs"><a href="https://minyoungg.github.io/mlscale/">Home</a></div>
+    <h1 class="post-title">
+      Critical batch-size in deep learning
+    </h1>
+    <div class="post-description">
+      What batch-size should you use for your model? What does the batch-size tell you about your task? This post discusses one main aspects of the scaling law.
+    </div>
+    <div class="post-meta"><span title='2023-11-01 11:30:03 +0000 +0000'>November 1, 2023</span>&nbsp;·&nbsp;23 min&nbsp;·&nbsp;
+Author: &nbspMinyoung Huh
+&nbsp | &nbsp Editor: &nbspN/A
+
+</div>
+  </header> <div class="toc">
+    <details >
+        <summary accesskey="c" title="(Alt + C)">
+            <span class="details">Table of Contents</span>
+        </summary>
+
+        <div class="inner"><ul>
+                <li>
+                    <a href="#introduction" aria-label="Introduction">Introduction</a><ul>
+                        
+                <li>
+                    <a href="#why-do-we-use-stochastic-optimization" aria-label="Why do we use stochastic optimization?">Why do we use stochastic optimization?</a></li>
+                <li>
+                    <a href="#what-is-critical-batch-size-and-why-care" aria-label="What is critical batch-size and why care?">What is critical batch-size and why care?</a></li></ul>
+                </li>
+                <li>
+                    <a href="#gradient-descent-and-optimal-learning-rate" aria-label="Gradient descent and optimal learning rate">Gradient descent and optimal learning rate</a><ul>
+                        
+                <li>
+                    <a href="#extension-to-stochastic-gradient-descent" aria-label="Extension to stochastic gradient descent">Extension to stochastic gradient descent</a></li></ul>
+                </li>
+                <li>
+                    <a href="#estimating-compute-optimal-batch-size" aria-label="Estimating compute optimal batch-size">Estimating compute optimal batch-size</a><ul>
+                        
+                <li>
+                    <a href="#how-to-compute-batch-noise-scale-efficiently" aria-label="How to compute batch-noise scale efficiently?">How to compute batch-noise scale efficiently?</a></li></ul>
+                </li>
+                <li>
+                    <a href="#results" aria-label="Results">Results</a><ul>
+                        
+                <li>
+                    <a href="#scaling-law" aria-label="Scaling law">Scaling law</a></li>
+                <li>
+                    <a href="#additional-relevant-works" aria-label="Additional Relevant Works">Additional Relevant Works</a></li></ul>
+                </li>
+                <li>
+                    <a href="#conclusion" aria-label="Conclusion">Conclusion</a>
+                </li>
+            </ul>
+        </div>
+    </details>
+</div>
+
+  <div class="post-content">
+
+
+<!-- KaTeX -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.11.1/dist/katex.min.css" integrity="sha384-zB1R0rpPzHqg7Kpt0Aljp8JPLqbXI3bhnPWROx27a9N0Ll6ZP/+DiW/UqRcLbRjq" crossorigin="anonymous">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.11.1/dist/katex.min.js" integrity="sha384-y23I5Q6l+B6vatafAwxRu/0oK/79VlbSz7Q9aiSZUvyWYIYsd+qj+o24G5ZU2zJz" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.11.1/dist/contrib/auto-render.min.js" integrity="sha384-kWPLUVMOks5AQFrykwIup5lo0m3iMkkHrD0uJ4H5cjeGihAutqP0yW0J6dpFiVkI" crossorigin="anonymous" onload="renderMathInElement(document.body);"></script>
+
+
+<p>In this post, I&rsquo;ll discuss the concept of the critical batch size, which is vital for both understanding stochastic optimization and improving distributed training efficiency.
+The primary focus of this blog will be on the research presented in <a href="https://arxiv.org/abs/1812.06162">An Empirical Model of Large-Batch Training</a> with a more deep dive into their dervaitons.
+I&rsquo;ve chosen this work primarily because of its digestible mathematical derivations and empirical results that align closely with contemporary large-scale experiments.</p>
+<br/>
+<h2 id="introduction">Introduction<a hidden class="anchor" aria-hidden="true" href="#introduction">#</a></h2>
+<h3 id="why-do-we-use-stochastic-optimization">Why do we use stochastic optimization?<a hidden class="anchor" aria-hidden="true" href="#why-do-we-use-stochastic-optimization">#</a></h3>
+<p>In an introductory machine learning class, students are introduced to the concept of gradient descent. However, shortly after our first assignment on training neural networks, we&rsquo;re guided away from gradient descent in favor of its stochastic counterpart. Reflecting on this, I realized it was a transition made without concrete justification other than the vague explanataion that &ldquo;it converges faster and better.&rdquo;</p>
+<p>Today, we regard stochastic gradient descent (along with its adaptive variants like Adam(W), Adafactor, K-FAC, etc.) as the standard optimization method for training deep networks. Yet, we seldom question the rationale behind these choices. Often, we simply adopt batch sizes and learning rates from academic papers and code repositories without much contemplation. Even as a PhD student in ML, I too have spend a fair share using stochastic optimization without considering its implications. For simplicity&rsquo;s sake, I&rsquo;ll interchangeably use stochastic gradient descent (SGD) with mini-batch gradient descent, since mini-batch of size one is SGD.</p>
+<p>For the purpose of this blog, I went around asking a simple question to my colleagues: &ldquo;Why do we use mini-batch training?&rdquo; I gathered varying responses with most common ones being:</p>
+<ol>
+<li>Small batches are a result of being memory constraints.</li>
+<li>The noise in mini-batches aids regularization.</li>
+<li>Mini-batches see more, so they can learn more.</li>
+<li>&ldquo;I&rsquo;m not sure; someone advised me to use it.&rdquo;</li>
+</ol>
+<p>While these response are not wrong, per se, I was able to sense a tone of uncertainty, even among the brightest peers.
+While a deep grasp isn&rsquo;t necessary for most academic research, I believe that an appropriate understanding of this topic is important when scaling up or trying to reason through our experimental results.</p>
+<p>So &hellip;  what does it do exactly then?</p>
+<p>From your personal experiences with training deep neural networks, you might&rsquo;ve noticed that varying the batch size impacts the final performance and convergence speeds. Increasing the batch size often accelerates training but not always! Too small of a batch-size and the model no longer trains. We will explore certains aspects of these observation through lens of critical batch-size.
+For a concise takeaway if you want to skip over the math, the key points are:</p>
+<ol>
+<li>Learning rate is contingent on batch size. Whenever you adjust the batch size, retune your learning rate.</li>
+<li>Increasing the batch size yields diminishing returns. To optimize your model&rsquo;s throughput, select a batch size for computational efficiency rather than to merely utilize all GPU memory.</li>
+</ol>
+<br/>
+<h3 id="what-is-critical-batch-size-and-why-care">What is critical batch-size and why care?<a hidden class="anchor" aria-hidden="true" href="#what-is-critical-batch-size-and-why-care">#</a></h3>
+<p>Deep learning thrives on scale. Given the immense empirical capabilities of large models, distributed training has become an indispensable component of deep learning research. Distributed learning aims to spread computational workload to &ldquo;maximize&rdquo; the throughput of training examples. This system-level optimization is facilitated through <u style="color:#e76f51">data-parallelism</u>, <u style="color:#e76f51">model-parallelism</u>, and <u style="color:#e76f51">pipeline parallelism</u>.</p>
+<div style="padding: 15px 15px 15px 25px; border: 1px solid #e0e0e0; border-radius: 5px; font-size: 80%;">
+<b> A Brief Detour for Definitions </b>
+<ul id="footnotes" style="list-style-type: none; margin: 0; padding: 0;">
+    <li> <u style="color:#e76f51">Data-parallelism</u>: Multiple GPUs or nodes train on different subsets of data using the same model. Each device computes its gradients, which are then averaged and applied to update the model. </li>
+    <li> <u style="color:#e76f51">Model-parallelism</u>: A model is segmented across multiple GPUs or nodes, with each GPU hosting a layer or a group of layers. This approach is particularly beneficial for vast models that can't reside on a single GPU. </li>
+    <li> <u style="color:#e76f51">Pipeline-parallelism</u>: The forward and backward passes of a neural network are partitioned into stages, similar to model-parallelism. Data is partitioned into a queue, and pipielined through each stage (GPU device). The GPU processes the input and passes it along to the next GPU, and processes the next data partition. This setup ensures multiple batches are processed at varying stages concurrently, optimizing GPU utilization. </li>
+</ul>
+</div>
+<br/>
+<p>These parallelism types can be combined, but in academia, data-parallelism remains predominant. However, open-source libraries like PyTorch FSDP, DeepSpeed, HuggingFace, and Megatron are making the amalgamation of all three more feasible. Integrating these techniques allows one to train LLMs, which would have spanned 30 years, in just a month.</p>
+<p>The topic of critical batch size revolves around data-parallelism, asking the question: <b>&ldquo;what is the compute/time-optimal batch-size?&quot;</b> To answer this question, lets think about our standard workflow.</p>
+<p>When training models, two primary hyperparameters are the learning rate and the batch size. The tuning protocol is sequential:</p>
+<ol>
+<li>We first pick some arbitrary batch-size and then</li>
+<li>Sweep across the learning-rate that gives us the best empirical result.</li>
+</ol>
+<p><i> It&rsquo;s crucial to note that the optimal learning rate fluctuates based on the batch size. And while the choice of batch size is often driven by the urge to fully utilize GPU memory, is this heuristic correct in the first place? </i></p>
+<p>When playing around with the batch-size we observe the following: smaller batches converge slowly, larger ones are faster, and an excessively large batch sizes slows it again.
+In academia, we often don&rsquo;t see the third regime unless we have A100/H100 at our disposal.</p>
+<p>Here the convergence speed can be seen as a tandem interplay between how well your GPU can parallelize the computation, and the number of gradient steps required to train the model.
+With more GPUs one can leverage bigger batches which minimizes training time for compute cost.
+In contrast, using a single GPU we can use small mini-batches but take &ldquo;years&rdquo; to train the model.
+The work of McCandlish et al. investigates what would be the perfect trade-off between compute budget and training speed.</p>
+<p class="cssclass1 cssclass2">
+  <img src="./images/critical_batch_size/img1.png" alt="Logo" title="Logo title">
+  <p style="color:grey;font-size: 0.6vw;">Figure 1. of McCandlish et al. Blue box is where we want to be.</em>
+</p>
+<!-- ![alt text](./images/critical_batch_size/img1.png) -->
+<p>I will be using the derivation proposed in the aforementioned paper to motivate the problem with some slight massaging to make it easier to explain.
+The goal of critical batch-size is to understand what the optimal batch-size one should use given a compute/time budget.
+Doing so allows one to maximally and optimally allocate their computation budget.</p>
+<br/>
+<hr>
+<h2 id="gradient-descent-and-optimal-learning-rate">Gradient descent and optimal learning rate<a hidden class="anchor" aria-hidden="true" href="#gradient-descent-and-optimal-learning-rate">#</a></h2>
+<p> 
+    First, let's dive into how how to compute the optimal learning rate for full-batch gradient descent.
+</p>
+<p>
+<i> Proof sketch: </i> Take a small perturbation as a function of the learning rate \( \eta \) and solve for what the optimal \( \eta \) should have been.
+</p>
+<p>
+    Let us denote \(G(\theta)\) be the gradient computed from the full batch, where we will drop \( \theta \) and use \(G\) for clarity. 
+    We first take an infinitesimal step along the negative gradient; this guarantees that our training loss is lower in the next iteration.
+    This is only true in a full-batch setting, and for stochastic gradient descent, this is true on expectation.
+</p>
+<p>
+    How big should this infinitesimal perturbation be? If we take too small of a step, we would be moving along the same direction in the next iteration and would have wasted a forward-backward compute cycle.
+    Too big, and our training loss would increase. 
+</p>
+<p>
+    In optimization theory, the optimal learning rate can be analytically solved, albeit being very computationally expensive. One can also speed it up using line-search methods such as <a href=https://en.wikipedia.org/wiki/Backtracking_line_search>backtracking line search</a> or <a href=https://en.wikipedia.org/wiki/Wolfe_conditions>Wolfe condition</a> that use various heuristics for efficient estimation. 
+</p>
+<p>
+    In deep learning, we take a more trial-and-error approach, where we try random learning rates until we stumble upon the hyperparameter that works the best. This is considered to be more cost-efficient than computing the exact step-size.
+</p>
+<p>
+    For now, let's analytically solve for the learning rate \( \eta_{\mathsf{max}} \). 
+    To do so, we will use the second-order Taylor expansion. Assume we take a tiny perturbation \( \Delta \theta \) around the model parameter \( \theta \). 
+</p>
+<div>
+$$
+\mathcal{L}(\theta + \Delta \theta) \approx \mathcal{L}(\theta) + G^T \Delta \theta - \frac{1}{2} \Delta \theta^T H \Delta \theta
+$$
+</div>
+<p> Where \(H\) is the Hessian of the model. If we set the perturbation to be the negative gradient times some learning rate, \( \Delta \theta = - \eta G \), we arrive at: </p>
+<div>
+$$
+\mathcal{L}(\theta + \Delta \theta) \approx \mathcal{L}(\theta) - \eta G^T G + \frac{1}{2} \eta ^2  G^T H  G
+$$
+</div>
+<p> Taking the derivative with respect to the learning rate \(\eta\) and setting it to zero, we find that the optimal step size \(\eta_{\mathsf{max}}\) should be: </p>
+<div>
+$$
+\begin{aligned}
+&\frac{\partial}{\partial \eta} \left( \mathcal{L}(\theta) - \eta G^T G + \frac{1}{2} \eta ^2  G^T H  G \right) = 0\\
+&  - G^T G + \eta G^T H  G  = 0 \\
+& \eta_{\mathsf{max}} = \frac{\lvert G \rvert^2}{ G^T H G}
+\end{aligned}
+$$
+</div>
+<p> The optimal learning rate directly depends on the Hessian around the parameter \( \theta \). Computing this is not only costly, but it also needs to be recomputed at every iteration.  </p>
+<p>
+The denominator depends on the curvature. Hence, based on the Hessian of the current parameter, the optimal learning rate could vary drastically. Common adaptive optimizers used today can be thought of as trying to approximate some information about the curvature \( H \) in a cost-efficient manner.
+</p>
+<p> Great! We now know how to compute the optimal learning rate for full-batch gradient descent, but this doesn't tell us what the optimal learning rate should be for stochastic gradient descent methods. We now extend our analysis to SGD. </p>
+<br>
+<hline>
+<h3 id="extension-to-stochastic-gradient-descent">Extension to stochastic gradient descent<a hidden class="anchor" aria-hidden="true" href="#extension-to-stochastic-gradient-descent">#</a></h3>
+<p>We would like to know how the optimal learning rate of full-batch gradient descent relates to that of mini-batch gradient descent. The only variable that differentiates the two is the mini-batch size \(B\). Hence, we would like to determine the relationship \(f(B)\), if any, that relates these two terms:</p>
+<div>
+$$ \eta_{\mathsf{max}} = f(B) \cdot \eta_{\mathsf{sgd}} $$
+</div>
+<p> Our goal is to apply a similar analysis technique using the second-order Taylor expansion, but in the stochastic setting. </p>
+<div>
+$$ 
+\begin{aligned}
+\mathbb{E} \left[ \mathcal{L}(\theta + \eta G_{\mathsf{sgd}}) \right] &= \mathbb{E}\left[ \mathcal{L}(\theta) - \eta G_{\mathsf{sgd}}^T G + \frac{1}{2} \eta ^2  G_{\mathsf{sgd}}^T H  G_{\mathsf{sgd}} \right] \\
+&= \mathbb{E}\left[ \mathcal{L}(\theta) \right] - \mathbb{E}\left[\eta G_{\mathsf{sgd}}^T G\right] + \mathbb{E}\left[\frac{1}{2} \eta ^2  G_{\mathsf{sgd}}^T H  G_{\mathsf{sgd}} \right] \\
+&= \mathcal{L}(\theta) - \eta \mathbb{E}\left[ G_{\mathsf{sgd}}^T \right] G + \frac{\eta ^2}{2} \mathbb{E}\left[ G_{\mathsf{sgd}}^T H  G_{\mathsf{sgd}} \right] \\
+\end{aligned}
+$$
+</div>
+<p>To compute the expectations of the second and the third term, we need to know the expectation and the variance of the mini-batch gradients \( G_{\mathsf{sgd}} \).</p>
+<div style="padding: 15px 15px 15px 25px; border: 1px solid #e0e0e0; border-radius: 5px; font-size: 80%;">
+<b>Mini-batch expectation and variance </b>
+<div>
+$$
+G_{\mathsf{sgd}}(\theta) = \frac{1}{B} \sum_{i=1}^B \nabla_{\theta} l(\theta)  \quad \text{where} \quad  x_i \sim \mathcal{X}_{\mathsf{train}}
+$$
+</div>
+<p>Since we sample the data points uniformly at random from the training distribution \( \mathcal{X} \), the gradient \( G_{\mathsf{sgd}}\) becomes a random variable. Since the mini-batch sampled i.i.d. from the data distribution is unbiased, the expectation of the R.V is the true gradient:</p>
+<div>
+$$
+    \mathbb{E}_{ x_{1} \dots x_{B} \sim\mathcal{p}} [ G_{\mathsf{sgd}}] = G
+$$
+</div>
+<p>The covariance of the mini-batch informs us about the accuracy of the estimate relative to the true gradient. Under the assumption \(B \ll D\); the relationship is described as follows:</p>
+<div>
+$$
+    \mathrm{Cov}_{ x_{1} \dots x_{B} \sim\mathcal{p}} [ G_{\mathsf{sgd}}] = \Sigma_{\mathsf{sgd}} = \frac{1}{B} \Sigma
+$$
+</div>
+<p> Where the per-sample covariance matrix \( \Sigma \) is: </p>
+<div>
+$$
+\Sigma = \mathbb{E}_{ x \sim\mathcal{p}}[G_{\mathsf{sgd}} G_{\mathsf{sgd}}^T] - \lvert \mathbb{E}_{ x \sim\mathcal{p}}[G_{\mathsf{sgd}}] \rvert ^2 = \mathbb{E}_{ x \sim\mathcal{p}}[G_{\mathsf{sgd}} G_{\mathsf{sgd}}^T]  - GG^T \\
+$$
+</div>
+<p>We observe that the variance of the mini-batch scales inversely with the per-sample variance.</p>
+</div>
+<br>
+<p>Now lets resume with the calculations above:</p>
+<div>
+$$ 
+\begin{aligned}
+\mathbb{E} \left[ \mathcal{L}(\theta + \eta G_{\mathsf{sgd}}) \right] &=  \mathcal{L}(\theta) - \eta \mathbb{E}\left[ G_{\mathsf{sgd}}^T \right] G + \frac{\eta ^2}{2} \mathbb{E}\left[ G_{\mathsf{sgd}}^T H  G_{\mathsf{sgd}} \right] \\
+\end{aligned}
+$$
+</div>
+<p>Where the second term is:</p>
+<div>
+$$
+\eta \mathbb{E}\left[ G_{\mathsf{sgd}}^T \right] G = \eta G^T G = \eta \lvert G \rvert^2
+$$
+</div>
+<p> The third term is more involved: </p>
+<div>
+$$
+\begin{aligned}
+\frac{\eta ^2}{2} \mathbb{E}\left[ G_{\mathsf{sgd}}^T H  G_{\mathsf{sgd}} \right] &= \frac{\eta ^2}{2} trace\left( G_{\mathsf{sgd}}^T H  G_{\mathsf{sgd}} \right) \\
+&= \frac{\eta ^2}{2} trace\left( H G_{\mathsf{sgd}}^T G_{\mathsf{sgd}} \right) \\
+&= \frac{\eta ^2}{2} trace\left( H \left( \Sigma_{\mathsf{sgd}} + \mathbb{E}\left[G_{\mathsf{sgd}}^T\right] \mathbb{E}\left[G_{\mathsf{sgd}}\right] \right) \right) \\
+&= \frac{\eta ^2}{2} trace\left( H \left( \Sigma_{\mathsf{sgd}} + G^T G  \right) \right) \\
+&= \frac{\eta ^2}{2} \left( trace\left( H \Sigma_{\mathsf{sgd}} \right) + trace\left( H G^T G  \right) \right) \\
+&= \frac{\eta ^2}{2} \left( \frac{trace\left( H \Sigma \right)}{B} + trace\left( G^T H G  \right) \right) \\
+&= \frac{\eta ^2}{2} \left( \frac{trace\left( H \Sigma \right)}{B} + \mathbb{E}\left[ G^T H G  \right] \right) \\
+&= \frac{\eta ^2}{2} \left( G^T H G + \frac{trace\left( H \Sigma \right)}{B} \right) 
+\end{aligned}
+$$
+</div>
+<p> Putting it all together we arrive at the equation in the paper: </p>
+<div>
+$$ 
+\begin{aligned}
+\mathbb{E} \left[ \mathcal{L}(\theta + \eta G_{\mathsf{sgd}}) \right] = \mathcal{L}(\theta) - \eta \lvert G \rvert^2 + \frac{\eta ^2}{2} \left( G^T H G + \frac{trace\left( H \Sigma \right)}{B} \right)  \\
+\end{aligned}
+$$
+</div>
+<p> Taking the derivative to solve for the largest \( \eta \) we have: </p>
+<div>
+$$
+\eta_{\mathsf{opt}} = \frac{1 }{1 + \mathcal{B}_{\mathsf{noise}}/B} \eta_{\mathsf{max}}\qquad \text{where} \quad \mathcal{B}_{\mathsf{noise}} = \frac{trace(H\Sigma)}{G^T H G}
+$$
+</div>
+<p> Which results in an optimal improvement of (plug in \( \eta_{\mathsf{opt}} \) back into the equation): </p>
+<div>
+$$
+\Delta \mathcal{L}_{\mathsf{opt}} = \frac{1}{1 + \mathcal{B}_{\mathsf{noise}}/B}\Delta \mathcal{L}_{\mathsf{max}}   \qquad \text{where} \quad \Delta \mathcal{L}_{\mathsf{max}} = \frac{1}{2}\frac{\lvert G \rvert ^4}{G^T H G}
+$$
+</div>
+<p>When the batch-noise is zero, we obtain the maximum learning rate of full-batch descent. In the small mini-batch regime, where \(\mathcal{B}_{\mathsf{noise}} \gg B\), increasing the batch size linearly improves the progress in training loss. However, as the batch size approaches the large batch regime and \(\mathcal{B}_{\mathsf{noise}} \ll B\), the second term in the denominator approaches 0, leading to diminishing returns. See figure below that illustrates this point: </p>
+<p class="cssclass1 cssclass2" style="text-align:center;">
+  <img src="./images/critical_batch_size/scaling.png" alt="Logo" title="Logo title" style="width:70%; height:auto; display:block; margin:auto;">
+  <p style="color:grey;font-size: 0.6vw;">Figure 3. of McCandlish et al. Blue box is where we want to be.</p>
+</p>
+<p>We define the <u style="color:#e76f51">critical batch size</u> as the point where we cease to observe linear improvement from increasing the batch size. This is the point at which training speed reduces to 50% when \(\mathcal{B}_{\mathsf{noise}} \approx B\). We will provide a more concrete definition in the next section.</p>
+<p>In summary, the batch-noise \(\mathcal{B}_{\mathsf{noise}} \) is influenced by the optimization landscape characterized by the gradient \( G \) and the \( H \). The optimization landscape is contingent on both the task and the architecture. Consequently, the optimal batch size will vary if any of these parameters are altered. Assessing the batch-noise provides insights into the complexity of the task, informativeness of the data point with respect to the task, and efficiency of your model to leverage more data. </p>
+<br/>
+<hr>
+<h2 id="estimating-compute-optimal-batch-size">Estimating compute optimal batch-size<a hidden class="anchor" aria-hidden="true" href="#estimating-compute-optimal-batch-size">#</a></h2>
+<p>We defined the critical batch size as the point where \( B \approx \mathcal{B}_{\mathsf{noise}} \). Given this batch-noise, we now aim to determine how to select the optimal batch size.</p>
+<p>First, let's introduce a few new terms:</p>
+<ul>
+    <li>\(S\)- the actual number of steps.</li>
+    <li>\(E\)- the actual number of training samples.</li>
+    <li>\(S_{\mathsf{min}}\)- the minimum number of steps required to achieve a specific performance level.</li>
+    <li>\(E_{\mathsf{min}}\)- the minimum number of samples needed to attain a particular performance level.</li>
+</ul>
+<p>Our objective is to determine whether to increase or decrease the batch size for maximum efficiency, which is determined by your hardware configuration and time constraints for computation. To do so for a given training paradigm, one would need to understand the exchange rate, \( r \), which equates the relationship between number of training samples with training steps as a function of batch-size:</p>
+<div>
+$$
+r = -\frac{\frac{\partial d}{\partial B} \delta E}{\frac{\partial d}{\partial B} \delta S} 
+$$
+</div>
+<p> 
+Previously, we demonstrated that the change in loss for the full-batch gradient, \( \Delta \mathcal{L}_{\mathsf{max}} \), scales directly with \( {1 + \mathcal{B}_{\mathsf{noise}}/B} \) in relation to the optimal mini-batch loss \( \Delta \mathcal{L}_{\mathsf{opt}} \) for a given batch size \( B \). This suggests that by employing a mini-batch of size \( B \), our progression will deviate from the "ideal" gradient descent trajectory by a small delta, which scales with \( {1 + \mathcal{B}_{\mathsf{noise}}/B} \).
+</p>
+<p>
+Under the simplifying assumption that the change in loss is directly proportional to the number of steps required for convergence, the number of steps needed for training would scale with \( 1 + \mathcal{B}_{\mathsf{noise}}/B \). Furthermore, given that the number of samples is related by \( E = BS \), we can write out its respective deltas as:
+</p>
+<div>
+$$
+\delta S = 1 + \frac{\mathcal{B}_{\mathsf{noise}}}{B} \qquad \text{and} \qquad  \delta E = B \delta S
+$$
+</div>
+<p> Plugging it back into the exchange rate \( r \) we have: </p>
+<div>
+$$
+r = -\frac{\frac{\partial d}{\partial B} \delta E}{\frac{\partial d}{\partial B} \delta S} 
+= - \frac{\frac{\partial d}{\partial B} B (1 + \frac{\mathcal{B}_{\mathsf{noise}}}{B})}{\frac{\partial d}{\partial B} \left( 1 + \frac{\mathcal{B}_{\mathsf{noise}}}{B}\right)} 
+= -\frac{1}{-\mathcal{B}_{\mathsf{noise}} B^{-2}} = \frac{B^2}{\mathcal{B}_{\mathsf{noise}}}
+$$
+</div>
+<p>Further rearranging the terms reveals the following relationship:</p>
+<div>
+$$
+B(s) = \sqrt{r \mathcal{B}_\mathsf{noise}(s)}
+$$
+</div>
+<p>This implies that one should select the batch size in proportion to the square root of the noise scale. It's essential to note that \( r \) is a design choice, allowing us to determine whether we want to prioritize sample complexity or compute complexity.</p>
+<p> Next, we will leverage this relationship to equate the number of training steps \( S \) with the number of examples \( E \). </p>
+<p> The total number of steps and the examples processed can be represented as the integral of the quantities \( \delta S \) and \( \delta E \) defined previously:</p>
+<div>
+$$
+\begin{aligned}
+S &= \int \delta S = \int \left( 1 + \frac{\mathcal{B_{\mathsf{noise}}(s)}}{B(s)} \right) ds \\
+E &= \int \delta E =  \int B \delta S = \int B \left( 1 + \frac{\mathcal{B_{\mathsf{noise}}(s)}}{B(s)} \right) = \int \left( \mathcal{B_{\mathsf{noise}}(s)} + B(s) \right) ds \\
+\end{aligned}
+$$
+</div>
+<p> 
+Where \( s \) denotes the training iteration.
+</p>
+<p> By substituting the batch-to-noise-scale relationship \( B(s) = \sqrt{r \mathcal{B}_\mathsf{noise}(s)} \) into the \( S \) and \( E \) integrals, we get: </p>
+<div>
+$$
+\begin{aligned}
+S_{\mathsf{tot}} &= \int \left( 1 + \frac{\mathcal{B_{\mathsf{noise}}(s)}}{\sqrt{r \mathcal{B}_\mathsf{noise}(s)}} \right) ds \\
+&= S_{\mathsf{min}} + r^{-1/2} \int \sqrt{\mathcal{B}_\mathsf{noise}(s)} ds \\
+E_{\mathsf{tot}} &= \int \left( \mathcal{B_{\mathsf{noise}}(s)} + \sqrt{r \mathcal{B}_\mathsf{noise}(s)} \right) ds \\
+&= E_{\mathsf{min}} + r^{1/2} \int \sqrt{\mathcal{B}_\mathsf{noise}(s)} ds \\ 
+\end{aligned}
+$$
+</div>
+<p> As \( r \) is a free variable, we rearrnage and solve for \( r \) for both equations: </p>
+<div>
+$$
+\frac{S_{\mathsf{min}}}{\phi} \left( \frac{S_{\mathsf{tot}}}{S_{\mathsf{min}}} - 1 \right) = r^{1/2} \\
+\left( \frac{E_{\mathsf{min}}}{\phi} \left( \frac{E_{\mathsf{tot}}}{E_{\mathsf{min}}} - 1 \right) \right)^{-1} = r^{1/2}
+$$
+</div>
+<p> Where \( \phi = \int \sqrt{\mathcal{B}_\mathsf{noise}(s)} ds \). Equating both sides by \( r \), we arrive at the sought-after relationship: </p>
+<div>
+$$
+\frac{S_{\mathsf{min}}}{\phi} \left( \frac{S_{\mathsf{tot}}}{S_{\mathsf{min}}} - 1 \right) = \left( \frac{E_{\mathsf{min}}}{\phi} \left( \frac{E_{\mathsf{tot}}}{E_{\mathsf{min}}} - 1 \right) \right)^{-1} \\
+$$ 
+</div>
+<p>And with more massaging:</p>
+<div>
+$$
+\left( \frac{S_{\mathsf{tot}}}{S_{\mathsf{min}}} - 1 \right) = \gamma \left( \frac{E_{\mathsf{tot}}}{E_{\mathsf{min}}} - 1 \right)^{-1} 
+\quad \text{where} \quad \gamma = \frac{\left(\int \sqrt{\mathcal{B}_\mathsf{noise}(s)} ds  \right)^2}{S_{\mathsf{min}}E_{\mathsf{min}}}
+$$
+</div>
+<p> Here \( \gamma \) characterizes the variation in the noise-scale throughout training. If there's significant variation in \( \gamma \), one can expect to see large convergence speed benefits by adjusting the batch size over training. </p>
+<p> If we choose not to eliminate \( r \) from both sides but instead set \( r = \frac{E_{\mathsf{min}}}{S_{\mathsf{min}}} \), we arrive at the following relationship: </p>
+<div>
+$$
+\frac{S_{\mathsf{tot}}}{S_{\mathsf{min}}} = \frac{E_{\mathsf{tot}}}{E_{\mathsf{min}}} = 1 + \sqrt{\gamma}
+$$
+</div>
+<p> Given this choice of \( r \), both cost efficiency and time efficiency are optimally balanced within the same factor. This is the empirical critical batch-size: </p>
+<div>
+$$ 
+\begin{aligned}
+\frac{E_{\mathsf{min}}}{S_{\mathsf{min}}} = B_{\mathsf{crit}}  \approx \mathcal{B}_{\mathsf{noise}}
+\end{aligned}
+$$
+</div>
+<p>The second inequality is from our definition of critical batch-size, where we defined it to be the point in which the number of training steps and number of training samples is balanced.</p>
+<br/>
+<h3 id="how-to-compute-batch-noise-scale-efficiently">How to compute batch-noise scale efficiently?<a hidden class="anchor" aria-hidden="true" href="#how-to-compute-batch-noise-scale-efficiently">#</a></h3>
+<p>The critical batch size can be computed as an empirical fit to the data and is proportional to the batch noise. However, calculating it is very resource-intensive. One would need to sweep through all potential hyperparameters for a given batch size to determine the minimum number of samples required and then perform another sweep to determine the minimum number of steps. Is there an efficient alternative that is a good proxy for measuring batch-noise? Lets consider the optimal analytical step-size we derived above:</p>
+<div>
+$$
+    \mathcal{B}_{\mathsf{noise}} = \frac{trace(H\Sigma)}{G^T H G}
+$$
+</div>
+<p>Computing the Hessian \( H \) is the resource-intensive component that makes it infeasible to calculate the batch-noise analytically. 
+The authors suggest making a simplifying assumptions that the Hessian is a constant factor of an identity matrix. 
+This assumption implies a benign optimization landscape that is convex, constant curvature, and independent across parameters, which is almost never true in practice.
+But using this simplification we arrive at:</p>
+<div>
+$$
+    \mathcal{B}_{\mathsf{simple}} = \frac{trace(\Sigma)}{\lvert G \rvert^2}
+$$
+</div>
+<p>Where the numerator represents the sum of the variances of the individual gradient components, and the denominator is the global norm of the gradient.</p>
+<div>
+$$
+    \mathcal{B}_{\mathsf{simple}}  = \frac{trace(\Sigma)}{\lvert G \rvert^2} = \frac{\mathbb{E} [ | G_{\mathsf{sgd}} - G|^2 ]}{ | G |^2}
+$$
+</div>
+<p>This simplified measure allows us to feasibly calculate the batch-noise throughout training. If the dataset is small, one can compute the exact \( G \). Alternatively, if the dataset is too big, one can estimate \( G_{\mathsf{sgd}} \) and \( G \) using a small mini-batch and a larger mini-batch.</p> 
+<p> In distributed training framework, one can estimate this quantity with almost zero overhad. The gradients from a single device can be used as \( G_{\mathsf{sgd}} \), and the accumulated gradient as \( G \). This approximation requires averaging of multiple batches to obtain an unbiased estimate. </p>
+<!-- The authors monitored both methods and demonstrated that the simplified version closely approximates (within a factor of 10) the true critical batch-size. -->
+<br/>
+<hr>
+<h2 id="results">Results<a hidden class="anchor" aria-hidden="true" href="#results">#</a></h2>
+<p> We now go over some of the results. </p>
+<p><b> Is the simplification a good approximation? </b></p>
+<p> 
+Firstly, we examine the adequacy of the simplification, \( \mathcal{B}_{\mathsf{simple}} \), as an indicator for the critical batch-size. Authors' analysis reveals that while it does trace the trend accurately, it tends to overestimate by a factor of 10. Nonetheless, this general trajectory remains consistent across various tasks, as highlighted in the paper. Furthermore, when aiming for a particular validation loss, the trade-off between batch size and training steps appears to be consistent, as evidenced by the Pareto frontier curves. This suggests that if we target a specific loss value, the relationship between batch size and training steps remains consistent.
+</p>
+<p class="cssclass1 cssclass2">
+  <img src="./images/critical_batch_size/noise_scale.png" alt="Logo" title="Logo title">
+  <p style="color:grey;font-size: 0.6vw;">Figure 7. of McCandlish et al.</em>
+</p>
+<p><b> How does the noise scale vary with tasks? </b></p>
+<p> 
+The gradient noise scale seems to fluctuate based on the task. Drawing from intuitive understanding regarding task complexity, it's reasonable to infer that as task complexity rises, the gradient noise scale would follow suit. This aligns with the notion that for more intricate tasks, the critical batch size would be larger — necessitating more data samples to facilitate an accurate update.
+</p>
+<p class="cssclass1 cssclass2">
+  <img src="./images/critical_batch_size/tasks.png" alt="Logo" title="Logo title">
+  <p style="color:grey;font-size: 0.6vw;">Figure 4. of McCandlish et al.</em>
+</p>
+<p><b> Does the noise scale vary with model architecture? </b></p>
+<p>Lastly, observations indicate that the gradient noise scale remains relatively consistent across different parameter sizes within the same model family, as illustrated by the LSTM in the subsequent figure. Moreover, the gradient noise scale's progression throughout training appears to exhibit a consistent trend, across various model sizes.</p>
+<p class="cssclass1 cssclass2">
+  <img src="./images/critical_batch_size/models.png" alt="Logo" title="Logo title">
+  <p style="color:grey;font-size: 0.6vw;">Figure 8. of McCandlish et al.</em>
+</p>
+<p>There are a lot of results I skipped over, and I do suggest going through the paper on your own time. </p>
+<p><b> Additional results from Shallue et al.</b></p>
+<p><a href="https://arxiv.org/abs/1811.03600">Measuring the Effects of Data Parallelism
+on Neural Network Training parallel</a> is a concurrent work that ran extensive empirical experiments on critical batch-size.
+Here I list some of the key findings of the work that I found interesting (I put section/page reference if you want to jump directly to it):</p>
+<ol>
+    <li>Some models can exploit much larger batch sizes than others (<span style="color:#e76f51;font-style:italic;">Section 4.3</span>):
+        <ul>
+            <li>Transformer > LSTMs</li>
+            <li>CNNs > MLPs</li>
+            <li>ResNets > VGG</li>
+        </ul>
+    </li>
+    <li>Momentum extends perfect scaling to larger batch sizes (<span style="color:#e76f51;font-style:italic;">Section 4.4</span>)</li>
+    <li>The dataset matters (<span style="color:#e76f51;font-style:italic;">Section 4.5</span>)</li>
+    <li>Regularization can be more helpful at some batch sizes than others (<span style="color:#e76f51;font-style:italic;">Section 4.6</span>)</li>
+    <li>The best learning rate and momentum vary with batch size (<span style="color:#e76f51;font-style:italic;">Section 4.7</span>)</li>
+        <ul>
+            <li> A mathematical investigation for why adaptive methods like K-FAC have even larger critical batch-size is investigated in <a href=https://arxiv.org/abs/1907.04164>Which Algorithmic Choices Matter at Which Batch Sizes? Insights From a Noisy Quadratic Mode</a>
+        </ul>
+    <li>With increasing batch size, the region in metaparameter space corresponding to rapid training in terms of epochs becomes smaller, while the region in metaparameter space corresponding to rapid training in terms of step-count grows larger (<span style="color:#e76f51;font-style:italic;">Page 24, Figure 9</span>)</li>
+    <li>Smaller Transformer models have larger stable learning rates (<span style="color:#e76f51;font-style:italic;">Page 25, Figure 10</span>)</li>
+    <li>Solution quality depends on compute budget more than batch size (<span style="color:#e76f51;font-style:italic;">Page 26, Figure 11</span>)</li>
+</ol>
+<br/>
+<!-- ### A Bayesian Perspective
+
+Around the same time, Smith and Le discussed the concept of critical batch size in relation to the generalization gap in their paper, [A Bayesian Perspective On Generalization and Stochastic Gradient Descent](https://arxiv.org/abs/1710.06451). They propose that Stochastic Gradient Descent (SGD) correlates with "Bayesian evidence" and avoids sharp minimas. This builds upon the ideas presented in [On Large-batch Training for Deep Learning: Generalization Gap and Sharp Minima](https://arxiv.org/abs/1609.04836).
+
+The authors derive the noise scale in SGD as:  
+
+<div>
+$$
+ g = \eta \left( \frac{N}{B} - 1\right) , 
+$$
+</div>
+
+<p> where \( g \) is the noise scale, \( N \) is the training set size, and \( B \) is the batch-size.</p>
+
+Building on this, Smith et al.'s subsequent paper, [Don't Decay the Learning Rate, Increase the Batch Size](https://arxiv.org/pdf/1711.00489.pdf), suggests increasing the batch size instead of reducing the learning rate. This approach allows for sub-hour ImageNet training on  Inception-ResNet-V2.
+
+<p class="cssclass1 cssclass2">
+  <img src="./images/critical_batch_size/increase-batch-size.png" alt="Logo" title="Logo title">
+  <p style="color:grey;font-size: 0.6vw;">Figure 6. of Smith et al. Inception-ResNet-V2 on ImageNet. </em>
+</p>
+
+<br/> -->
+<h3 id="scaling-law">Scaling law<a hidden class="anchor" aria-hidden="true" href="#scaling-law">#</a></h3>
+<p>The follow up work on Kaplan and McCandlish et al. in <a href="https://arxiv.org/pdf/2001.08361.pdf">Scaling Laws for Neural Language Models</a>. In their work, they established a power-law relationship using smaller transformer models to make predictions about the behavior of larger GPT models. Their power-law equation is:</p>
+<div>
+$$
+B_{\mathsf{crit}}(L) \approx B^* \cdot {L^{-\alpha}}
+$$
+</div>
+<p>Where:</p>
+<ul>
+    <li><p> \( B^* \) is the initial batch-size, valued at \( 2 \times 10^8 \).</p></li>
+    <li><p> \( \alpha \) is the power-law exponent, which I recalculated to be approximately \( 4.7619 \) to align the equation with the conventional power-law format.</p></li>
+</ul>
+<p class="cssclass1 cssclass2">
+  <img src="./images/critical_batch_size/scaling-law.png" alt="Logo" title="Logo title">
+  <p style="color:grey;font-size: 0.6vw;">Figure 10. of Kaplan et al. Critical batch-size of transformer models of varying sizes are consistent. </em>
+</p>
+<p> Given a specific loss \( L \), one can use this equation to determine the optimal batch size. As training continues and the model loss reduces, the critical batch size adjusts according to this power-law relationship. By using the critical batch size, one can utilize larger batch sizes to be more efficient as the training progresses, enabling more data parallelism. </p>
+<p> From the \( B_{\mathsf{crit}}(L) \) relationship, we can also determine the optimal number of steps for convergence: </p>
+<div>
+$$
+S_{\mathsf{min}}(S) = \frac{S}{1 + B_{\mathsf{crit}}(L)/B}
+$$
+</div>
+<p> Optimal performance is achieved when \( B \gg B_{\mathsf{crit}} \). Extending this analysis, one can ascertain the compute-optimal batch size (where "compute-optimal" refers to minimizing total computational operations or flops). Given a model size \( N \), the total number of flops is roughly \( C = 6NBS \) for batch size \( B \). Thus, the compute cost required is:
+<div>
+$$
+C_{\mathsf{min}}(C) = \frac{C}{1 + B/B_{\mathsf{crit}}(L)}
+$$
+</div>
+<p> Conversely, the minimum computation happens when \( B \ll B_{\mathsf{crit}} \). The ideal scenario is neither purely step-optimal \( S_{\mathsf{min}} \) nor compute-optimal \( C_{\mathsf{min}} \), but rather a balanced trade-off between the two. This is achieved when \( B = B_{\mathsf{crit}} \), striking the right balance between computational efficiency and training time, as discussed throughout this post. </p>
+<p>The concept of critical batch-size naturally fits into the study of scaling law. Scaling laws is a topic I enjoy deeply. However, delving too deep might be overwhelming for this blog post. If you&rsquo;re keen to learn more, here are some recommended readings:</p>
+<ol>
+<li><a href="https://arxiv.org/abs/1712.00409">Deep Learning Scaling is Predictable, Empirically</a></li>
+<li><a href="https://arxiv.org/abs/2001.08361">Scaling Laws for Neural Language Models</a></li>
+<li><a href="https://arxiv.org/abs/2010.14701">Scaling laws for autoregressive generative modeling</a></li>
+<li><a href="https://arxiv.org/abs/2203.15556">Training Compute-Optimal Large Language Models</a></li>
+<li><a href="https://arxiv.org/abs/2002.11794">Train big, then compress: Rethinking model size for efficient training and inference of transformers</a></li>
+<li><a href="https://proceedings.mlr.press/v130/stich21a/stich21a.pdf">Critical Parameters for Scalable Distributed Learning with Large Batches and Asynchronous Updates</a></li>
+</ol>
+<p>If time permits, I will write a follow-up post on scaling laws in the future.</p>
+<p><i> Some fascinating observations from some of these works: Given the same compute budget, its better to train a larger model and stop training early than to train the small model to convergence. Large models are easier to fine-tune, and better for quantization. </i></p>
+<br/>
+<h3 id="additional-relevant-works">Additional Relevant Works<a hidden class="anchor" aria-hidden="true" href="#additional-relevant-works">#</a></h3>
+<p>The subject of critical batch-size has garnered significant attention in the research community. For those interested in further exploration, here are some noteworthy studies:</p>
+<ol>
+<li><a href="https://arxiv.org/abs/2109.14119">Stochastic Training is Not Necessary for Generalization</a></li>
+<li><a href="https://arxiv.org/abs/1712.06559">The Power of Interpolation: Understanding the Effectiveness of SGD in Modern Over-parametrized Learning</a></li>
+<li><a href="https://arxiv.org/abs/1706.05699">Gradient Diversity: a Key Ingredient for Scalable Distributed Learning</a></li>
+<li><a href="https://arxiv.org/abs/1610.03774">Parallelizing Stochastic Gradient Descent for Least Squares Regression: Mini-batching, Averaging, and Model Misspecification</a></li>
+</ol>
+<p>These studies provide mathematical insights for anyone looking to gain a deeper understanding of the topic.</p>
+<br/>
+<hr>
+<h2 id="conclusion">Conclusion<a hidden class="anchor" aria-hidden="true" href="#conclusion">#</a></h2>
+<p>Unraveling the nuances of the <span style="color:#e76f51;">critical batch-size</span> sheds light on the intricate relationship between deep learning optimization and scalable training. It&rsquo;s not just a guideline for efficient distributed training, but also a core facet in the science of deep learning. It prompts us to rethink our data curation strategies, model design choices, optimization designs, and even curriculum learning? In my opinion, these works offer insights beyond what it was originally marketed for.</p>
+
+
+  </div>
+
+  <footer class="post-footer">
+    <ul class="post-tags">
+      <li><a href="https://minyoungg.github.io/mlscale/tags/first.html">first</a></li>
+    </ul>
+<nav class="paginav">
+  <a class="next" href="https://minyoungg.github.io/mlscale/posts/moe.html">
+    <span class="title">Next Page »</span>
+    <br>
+    <span>Mixture of Experts (MoE)</span>
+  </a>
+</nav>
+
+
+<div class="share-buttons">
+    <a target="_blank" rel="noopener noreferrer" aria-label="share Critical batch-size in deep learning on twitter"
+        href="https://twitter.com/intent/tweet/?text=Critical%20batch-size%20in%20deep%20learning&amp;url=https%3a%2f%2fminyoungg.github.io%2fmlscale%2fposts%2fcritical-batch-size.html&amp;hashtags=first">
+        <svg version="1.1" viewBox="0 0 512 512" xml:space="preserve">
+            <path
+                d="M449.446,0c34.525,0 62.554,28.03 62.554,62.554l0,386.892c0,34.524 -28.03,62.554 -62.554,62.554l-386.892,0c-34.524,0 -62.554,-28.03 -62.554,-62.554l0,-386.892c0,-34.524 28.029,-62.554 62.554,-62.554l386.892,0Zm-253.927,424.544c135.939,0 210.268,-112.643 210.268,-210.268c0,-3.218 0,-6.437 -0.153,-9.502c14.406,-10.421 26.973,-23.448 36.935,-38.314c-13.18,5.824 -27.433,9.809 -42.452,11.648c15.326,-9.196 26.973,-23.602 32.49,-40.92c-14.252,8.429 -30.038,14.56 -46.896,17.931c-13.487,-14.406 -32.644,-23.295 -53.946,-23.295c-40.767,0 -73.87,33.104 -73.87,73.87c0,5.824 0.613,11.494 1.992,16.858c-61.456,-3.065 -115.862,-32.49 -152.337,-77.241c-6.284,10.881 -9.962,23.601 -9.962,37.088c0,25.594 13.027,48.276 32.95,61.456c-12.107,-0.307 -23.448,-3.678 -33.41,-9.196l0,0.92c0,35.862 25.441,65.594 59.311,72.49c-6.13,1.686 -12.72,2.606 -19.464,2.606c-4.751,0 -9.348,-0.46 -13.946,-1.38c9.349,29.426 36.628,50.728 68.965,51.341c-25.287,19.771 -57.164,31.571 -91.8,31.571c-5.977,0 -11.801,-0.306 -17.625,-1.073c32.337,21.15 71.264,33.41 112.95,33.41Z" />
+        </svg>
+    </a>
+    <a target="_blank" rel="noopener noreferrer" aria-label="share Critical batch-size in deep learning on linkedin"
+        href="https://www.linkedin.com/shareArticle?mini=true&amp;url=https%3a%2f%2fminyoungg.github.io%2fmlscale%2fposts%2fcritical-batch-size.html&amp;title=Critical%20batch-size%20in%20deep%20learning&amp;summary=Critical%20batch-size%20in%20deep%20learning&amp;source=https%3a%2f%2fminyoungg.github.io%2fmlscale%2fposts%2fcritical-batch-size.html">
+        <svg version="1.1" viewBox="0 0 512 512" xml:space="preserve">
+            <path
+                d="M449.446,0c34.525,0 62.554,28.03 62.554,62.554l0,386.892c0,34.524 -28.03,62.554 -62.554,62.554l-386.892,0c-34.524,0 -62.554,-28.03 -62.554,-62.554l0,-386.892c0,-34.524 28.029,-62.554 62.554,-62.554l386.892,0Zm-288.985,423.278l0,-225.717l-75.04,0l0,225.717l75.04,0Zm270.539,0l0,-129.439c0,-69.333 -37.018,-101.586 -86.381,-101.586c-39.804,0 -57.634,21.891 -67.617,37.266l0,-31.958l-75.021,0c0.995,21.181 0,225.717 0,225.717l75.02,0l0,-126.056c0,-6.748 0.486,-13.492 2.474,-18.315c5.414,-13.475 17.767,-27.434 38.494,-27.434c27.135,0 38.007,20.707 38.007,51.037l0,120.768l75.024,0Zm-307.552,-334.556c-25.674,0 -42.448,16.879 -42.448,39.002c0,21.658 16.264,39.002 41.455,39.002l0.484,0c26.165,0 42.452,-17.344 42.452,-39.002c-0.485,-22.092 -16.241,-38.954 -41.943,-39.002Z" />
+        </svg>
+    </a>
+    <a target="_blank" rel="noopener noreferrer" aria-label="share Critical batch-size in deep learning on reddit"
+        href="https://reddit.com/submit?url=https%3a%2f%2fminyoungg.github.io%2fmlscale%2fposts%2fcritical-batch-size.html&title=Critical%20batch-size%20in%20deep%20learning">
+        <svg version="1.1" viewBox="0 0 512 512" xml:space="preserve">
+            <path
+                d="M449.446,0c34.525,0 62.554,28.03 62.554,62.554l0,386.892c0,34.524 -28.03,62.554 -62.554,62.554l-386.892,0c-34.524,0 -62.554,-28.03 -62.554,-62.554l0,-386.892c0,-34.524 28.029,-62.554 62.554,-62.554l386.892,0Zm-3.446,265.638c0,-22.964 -18.616,-41.58 -41.58,-41.58c-11.211,0 -21.361,4.457 -28.841,11.666c-28.424,-20.508 -67.586,-33.757 -111.204,-35.278l18.941,-89.121l61.884,13.157c0.756,15.734 13.642,28.29 29.56,28.29c16.407,0 29.706,-13.299 29.706,-29.701c0,-16.403 -13.299,-29.702 -29.706,-29.702c-11.666,0 -21.657,6.792 -26.515,16.578l-69.105,-14.69c-1.922,-0.418 -3.939,-0.042 -5.585,1.036c-1.658,1.073 -2.811,2.761 -3.224,4.686l-21.152,99.438c-44.258,1.228 -84.046,14.494 -112.837,35.232c-7.468,-7.164 -17.589,-11.591 -28.757,-11.591c-22.965,0 -41.585,18.616 -41.585,41.58c0,16.896 10.095,31.41 24.568,37.918c-0.639,4.135 -0.99,8.328 -0.99,12.576c0,63.977 74.469,115.836 166.33,115.836c91.861,0 166.334,-51.859 166.334,-115.836c0,-4.218 -0.347,-8.387 -0.977,-12.493c14.564,-6.47 24.735,-21.034 24.735,-38.001Zm-119.474,108.193c-20.27,20.241 -59.115,21.816 -70.534,21.816c-11.428,0 -50.277,-1.575 -70.522,-21.82c-3.007,-3.008 -3.007,-7.882 0,-10.889c3.003,-2.999 7.882,-3.003 10.885,0c12.777,12.781 40.11,17.317 59.637,17.317c19.522,0 46.86,-4.536 59.657,-17.321c3.016,-2.999 7.886,-2.995 10.885,0.008c3.008,3.011 3.003,7.882 -0.008,10.889Zm-5.23,-48.781c-16.373,0 -29.701,-13.324 -29.701,-29.698c0,-16.381 13.328,-29.714 29.701,-29.714c16.378,0 29.706,13.333 29.706,29.714c0,16.374 -13.328,29.698 -29.706,29.698Zm-160.386,-29.702c0,-16.381 13.328,-29.71 29.714,-29.71c16.369,0 29.689,13.329 29.689,29.71c0,16.373 -13.32,29.693 -29.689,29.693c-16.386,0 -29.714,-13.32 -29.714,-29.693Z" />
+        </svg>
+    </a>
+    <a target="_blank" rel="noopener noreferrer" aria-label="share Critical batch-size in deep learning on facebook"
+        href="https://facebook.com/sharer/sharer.php?u=https%3a%2f%2fminyoungg.github.io%2fmlscale%2fposts%2fcritical-batch-size.html">
+        <svg version="1.1" viewBox="0 0 512 512" xml:space="preserve">
+            <path
+                d="M449.446,0c34.525,0 62.554,28.03 62.554,62.554l0,386.892c0,34.524 -28.03,62.554 -62.554,62.554l-106.468,0l0,-192.915l66.6,0l12.672,-82.621l-79.272,0l0,-53.617c0,-22.603 11.073,-44.636 46.58,-44.636l36.042,0l0,-70.34c0,0 -32.71,-5.582 -63.982,-5.582c-65.288,0 -107.96,39.569 -107.96,111.204l0,62.971l-72.573,0l0,82.621l72.573,0l0,192.915l-191.104,0c-34.524,0 -62.554,-28.03 -62.554,-62.554l0,-386.892c0,-34.524 28.029,-62.554 62.554,-62.554l386.892,0Z" />
+        </svg>
+    </a>
+    <a target="_blank" rel="noopener noreferrer" aria-label="share Critical batch-size in deep learning on whatsapp"
+        href="https://api.whatsapp.com/send?text=Critical%20batch-size%20in%20deep%20learning%20-%20https%3a%2f%2fminyoungg.github.io%2fmlscale%2fposts%2fcritical-batch-size.html">
+        <svg version="1.1" viewBox="0 0 512 512" xml:space="preserve">
+            <path
+                d="M449.446,0c34.525,0 62.554,28.03 62.554,62.554l0,386.892c0,34.524 -28.03,62.554 -62.554,62.554l-386.892,0c-34.524,0 -62.554,-28.03 -62.554,-62.554l0,-386.892c0,-34.524 28.029,-62.554 62.554,-62.554l386.892,0Zm-58.673,127.703c-33.842,-33.881 -78.847,-52.548 -126.798,-52.568c-98.799,0 -179.21,80.405 -179.249,179.234c-0.013,31.593 8.241,62.428 23.927,89.612l-25.429,92.884l95.021,-24.925c26.181,14.28 55.659,21.807 85.658,21.816l0.074,0c98.789,0 179.206,-80.413 179.247,-179.243c0.018,-47.895 -18.61,-92.93 -52.451,-126.81Zm-126.797,275.782l-0.06,0c-26.734,-0.01 -52.954,-7.193 -75.828,-20.767l-5.441,-3.229l-56.386,14.792l15.05,-54.977l-3.542,-5.637c-14.913,-23.72 -22.791,-51.136 -22.779,-79.287c0.033,-82.142 66.867,-148.971 149.046,-148.971c39.793,0.014 77.199,15.531 105.329,43.692c28.128,28.16 43.609,65.592 43.594,105.4c-0.034,82.149 -66.866,148.983 -148.983,148.984Zm81.721,-111.581c-4.479,-2.242 -26.499,-13.075 -30.604,-14.571c-4.105,-1.495 -7.091,-2.241 -10.077,2.241c-2.986,4.483 -11.569,14.572 -14.182,17.562c-2.612,2.988 -5.225,3.364 -9.703,1.12c-4.479,-2.241 -18.91,-6.97 -36.017,-22.23c-13.314,-11.876 -22.304,-26.542 -24.916,-31.026c-2.612,-4.484 -0.279,-6.908 1.963,-9.14c2.016,-2.007 4.48,-5.232 6.719,-7.847c2.24,-2.615 2.986,-4.484 4.479,-7.472c1.493,-2.99 0.747,-5.604 -0.374,-7.846c-1.119,-2.241 -10.077,-24.288 -13.809,-33.256c-3.635,-8.733 -7.327,-7.55 -10.077,-7.688c-2.609,-0.13 -5.598,-0.158 -8.583,-0.158c-2.986,0 -7.839,1.121 -11.944,5.604c-4.105,4.484 -15.675,15.32 -15.675,37.364c0,22.046 16.048,43.342 18.287,46.332c2.24,2.99 31.582,48.227 76.511,67.627c10.685,4.615 19.028,7.371 25.533,9.434c10.728,3.41 20.492,2.929 28.209,1.775c8.605,-1.285 26.499,-10.833 30.231,-21.295c3.732,-10.464 3.732,-19.431 2.612,-21.298c-1.119,-1.869 -4.105,-2.99 -8.583,-5.232Z" />
+        </svg>
+    </a>
+    <a target="_blank" rel="noopener noreferrer" aria-label="share Critical batch-size in deep learning on telegram"
+        href="https://telegram.me/share/url?text=Critical%20batch-size%20in%20deep%20learning&amp;url=https%3a%2f%2fminyoungg.github.io%2fmlscale%2fposts%2fcritical-batch-size.html">
+        <svg version="1.1" xml:space="preserve" viewBox="2 2 28 28">
+            <path
+                d="M26.49,29.86H5.5a3.37,3.37,0,0,1-2.47-1,3.35,3.35,0,0,1-1-2.47V5.48A3.36,3.36,0,0,1,3,3,3.37,3.37,0,0,1,5.5,2h21A3.38,3.38,0,0,1,29,3a3.36,3.36,0,0,1,1,2.46V26.37a3.35,3.35,0,0,1-1,2.47A3.38,3.38,0,0,1,26.49,29.86Zm-5.38-6.71a.79.79,0,0,0,.85-.66L24.73,9.24a.55.55,0,0,0-.18-.46.62.62,0,0,0-.41-.17q-.08,0-16.53,6.11a.59.59,0,0,0-.41.59.57.57,0,0,0,.43.52l4,1.24,1.61,4.83a.62.62,0,0,0,.63.43.56.56,0,0,0,.4-.17L16.54,20l4.09,3A.9.9,0,0,0,21.11,23.15ZM13.8,20.71l-1.21-4q8.72-5.55,8.78-5.55c.15,0,.23,0,.23.16a.18.18,0,0,1,0,.06s-2.51,2.3-7.52,6.8Z" />
+        </svg>
+    </a>
+</div>
+
+  </footer>
+</article>
+    </main>
+    
+<footer class="footer">
+    <span>&copy; 2023 <a href="https://minyoungg.github.io/mlscale/"></a></span>
+    <span>
+        Powered by
+        <a href="https://gohugo.io/" rel="noopener noreferrer" target="_blank">Hugo</a> &
+        <a href="https://git.io/hugopapermod" rel="noopener" target="_blank">PaperMod</a>
+    </span>
+</footer>
+<a href="#top" aria-label="go to top" title="Go to Top (Alt + G)" class="top-link" id="top-link" accesskey="g">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 6" fill="currentColor">
+        <path d="M12 6H0l6-6z" />
+    </svg>
+</a>
+
+<script>
+    let menu = document.getElementById('menu')
+    if (menu) {
+        menu.scrollLeft = localStorage.getItem("menu-scroll-position");
+        menu.onscroll = function () {
+            localStorage.setItem("menu-scroll-position", menu.scrollLeft);
+        }
+    }
+
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener("click", function (e) {
+            e.preventDefault();
+            var id = this.getAttribute("href").substr(1);
+            if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView({
+                    behavior: "smooth"
+                });
+            } else {
+                document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView();
+            }
+            if (id === "top") {
+                history.replaceState(null, null, " ");
+            } else {
+                history.pushState(null, null, `#${id}`);
+            }
+        });
+    });
+
+</script>
+<script>
+    var mybutton = document.getElementById("top-link");
+    window.onscroll = function () {
+        if (document.body.scrollTop > 800 || document.documentElement.scrollTop > 800) {
+            mybutton.style.visibility = "visible";
+            mybutton.style.opacity = "1";
+        } else {
+            mybutton.style.visibility = "hidden";
+            mybutton.style.opacity = "0";
+        }
+    };
+
+</script>
+<script>
+    document.getElementById("theme-toggle").addEventListener("click", () => {
+        if (document.body.className.includes("dark")) {
+            document.body.classList.remove('dark');
+            localStorage.setItem("pref-theme", 'light');
+        } else {
+            document.body.classList.add('dark');
+            localStorage.setItem("pref-theme", 'dark');
+        }
+    })
+
+</script>
+<script>
+    document.querySelectorAll('pre > code').forEach((codeblock) => {
+        const container = codeblock.parentNode.parentNode;
+
+        const copybutton = document.createElement('button');
+        copybutton.classList.add('copy-code');
+        copybutton.innerText = 'copy';
+
+        function copyingDone() {
+            copybutton.innerText = 'copied!';
+            setTimeout(() => {
+                copybutton.innerText = 'copy';
+            }, 2000);
+        }
+
+        copybutton.addEventListener('click', (cb) => {
+            if ('clipboard' in navigator) {
+                navigator.clipboard.writeText(codeblock.textContent);
+                copyingDone();
+                return;
+            }
+
+            const range = document.createRange();
+            range.selectNodeContents(codeblock);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+            try {
+                document.execCommand('copy');
+                copyingDone();
+            } catch (e) { };
+            selection.removeRange(range);
+        });
+
+        if (container.classList.contains("highlight")) {
+            container.appendChild(copybutton);
+        } else if (container.parentNode.firstChild == container) {
+            
+        } else if (codeblock.parentNode.parentNode.parentNode.parentNode.parentNode.nodeName == "TABLE") {
+            
+            codeblock.parentNode.parentNode.parentNode.parentNode.parentNode.appendChild(copybutton);
+        } else {
+            
+            codeblock.parentNode.appendChild(copybutton);
+        }
+    });
+</script>
+</body>
+
+</html>

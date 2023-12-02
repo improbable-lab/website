@@ -5,14 +5,14 @@
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <meta name="robots" content="index, follow">
-<title>Speculative decoding | scale &#43; algorithms</title>
+<title>Speculative decoding | </title>
 <meta name="keywords" content="first" />
-<meta name="description" content="add description for the article">
+<meta name="description" content="A brief overview of speculative decoding, detailing the roots of LLM inference slowdowns and how algorithmic level changes can improve generation speed!">
 <meta name="author" content="
 Author: &nbspAni Nrusimha
 &nbsp | &nbsp Editor: &nbspMinyoung Huh">
 <link rel="canonical" href="https://canonical.url/to/page" />
-<link crossorigin="anonymous" href="https://minyoungg.github.io/mlscale/assets/css/stylesheet.min.1c5241cc5c31e8a1af5a56caa332bfa60cee35277d8fb31c7063ca9ed7258093.css" integrity="" rel="preload stylesheet" as="style">
+<link crossorigin="anonymous" href="https://minyoungg.github.io/mlscale/assets/css/stylesheet.min.012b9a75b78c05a5b3111bea2ffe80bb9c7a658de709126230287fb6db7016a7.css" integrity="" rel="preload stylesheet" as="style">
 <link rel="icon" href="https://minyoungg.github.io/mlscale/favicon.ico">
 <link rel="icon" type="image/png" sizes="16x16" href="https://minyoungg.github.io/mlscale/favicon-16x16.png">
 <link rel="icon" type="image/png" sizes="32x32" href="https://minyoungg.github.io/mlscale/favicon-32x32.png">
@@ -30,17 +30,17 @@ Author: &nbspAni Nrusimha
 
     </style>
 </noscript><meta property="og:title" content="Speculative decoding" />
-<meta property="og:description" content="add description for the article" />
+<meta property="og:description" content="A brief overview of speculative decoding, detailing the roots of LLM inference slowdowns and how algorithmic level changes can improve generation speed!" />
 <meta property="og:type" content="article" />
 <meta property="og:url" content="https://minyoungg.github.io/mlscale/posts/speculative-decoding.html" /><meta property="og:image" content="https://minyoungg.github.io/mlscale/papermod-cover.png"/><meta property="article:section" content="posts" />
-<meta property="article:published_time" content="2023-09-30T00:00:00&#43;00:00" />
-<meta property="article:modified_time" content="2023-09-30T00:00:00&#43;00:00" />
+<meta property="article:published_time" content="2023-09-13T00:00:00&#43;00:00" />
+<meta property="article:modified_time" content="2023-09-13T00:00:00&#43;00:00" />
 
 <meta name="twitter:card" content="summary_large_image"/>
 <meta name="twitter:image" content="https://minyoungg.github.io/mlscale/papermod-cover.png"/>
 
 <meta name="twitter:title" content="Speculative decoding"/>
-<meta name="twitter:description" content="add description for the article"/>
+<meta name="twitter:description" content="A brief overview of speculative decoding, detailing the roots of LLM inference slowdowns and how algorithmic level changes can improve generation speed!"/>
 
 
 <script type="application/ld+json">
@@ -63,15 +63,15 @@ Author: &nbspAni Nrusimha
   "@type": "BlogPosting",
   "headline": "Speculative decoding",
   "name": "Speculative decoding",
-  "description": "add description for the article",
+  "description": "A brief overview of speculative decoding, detailing the roots of LLM inference slowdowns and how algorithmic level changes can improve generation speed!",
   "keywords": [
     "first"
   ],
-  "articleBody": "   captions are tangents unimportant to the rest of the article.\nSo you want to use a large language model on device Only problem. Despite only running a sequence at a time, your model takes forever to run. What gives? You check nvidia-smi, and you are at 100% utilization. Perhaps you go even further. You calculate the number of floating point operations that your model performs, and divide by the number of operations that your GPU can do per second. You find an absurd number: off by several orders of magnitude. Is nvidia-smi lying to you? How do you estimate how fast your model will run? How do you make your model faster without changing your outputs at all? The answers to these questions are:\n technically no, but basically yes you find the bottleneck, which for batch size one1 inference is memory movement for weight data. you get creative, and use something like speculative decoding. ​  The problem Machine learning, from a systems perspective, is matrix multiplication with some additional spice. GPUs are like a big company, and split up the matrix computation into many small parts, and assign teams of workers to compute on each part. To vastly oversimplify a complex structure1, each team has a little bit of shared memory and a bunch of workers which have an absolutely tiny amount of registers in addition to the shared memory 2. The GPU itself has a huge buffer of memory that is globally accessible but far away from the individual SMs. ​ While the size of the global buffer can be as large as 80 GB on a A100 or H100, the size of the shared memory is on the order of hundreds of kilobytes per “team”3. Each SM can only store the weights (model parameters) and activations (model intermediate computations) needed for its immediate subtask, with the size of the subtasks3 carefully selected to fit into this small amount of memory. ​ This means that generating one token requires loading the entire model from main memory to shared memory at least once. The cost of this memory movements dwarfs the cost of computation. ​\nSide note: why does nvidia-smi lie? Nvidia-smi’s utilization takes into account how much of the GPU is being used, and has essentially on information on how effectively the GPU is being used. If you don’t have 99-100% utilization in nvidia-smi, parts of the GPU have nothing to do. ​ As any grad student knows, working a lot does not mean getting a lot of work done. nvidia-smi is measuring the former. The workers are spending the vast majority of their time waiting for stuff, but they have a task to do. As a result, nvidia-smi reports utilization at 100% ​\nLets get creative ​ This reality leads to an interesting implication. We have “free compute” - we could multiply the amount of computation we do without meaningfully increasing the amount of time it takes. ​ To make a long story short, this is the first core insight that leads to speculative decoding. For LLMs specifically, this insight explains why generating the logits of a short sentence will take around the same amount of time as generating a single word. Both involving multiplying all the weight matrices by some activations, and both the cost of memory movement for those activations and the cost of the multiplication pale in comparison to the cost of moving the weights. ​ This means that if you are able to reliably and quickly generate good candidate words for a sentence, you can verify the quality of the sentence much faster than generating it would have taken. The second key insight is fairly obvious: we already have small models that do a decent job of approximating larger ones! Use your 1B parameter model to accelerate your 7B, or 7B to accelerate 70B. ​ Once you realize these two key ideas, the rest is math to make sure that the results from your scheme exactly match the outputs from the original model. ​\nThe math ​ See the original paper for a detailed explanation. A short version is below. ​\n Let \\(p(x)\\) be the large model probability distribution, and \\(q(x)\\) be the smaller one. We are going to do a variant of something called rejection sampling.\nSample \\(n\\) tokens from \\(q(x)\\), called \\(x_1 ... x_n\\).  Generate the logits of the \\(n\\) tokens from \\(p(x)\\) For each token \\(x_i\\), decide whether to accept it based on the following criteria: If \\(q(x_i) Otherwise, sample a random number \\(r\\) from \\([0,1]\\) and compare it to some value \\(v\\). I will explain how to calculate \\(v\\) later. If it is less than \\(v\\), accept anyways If it was greater than \\(v\\), reject, break the loop, and sample the current token from the distribution \\(p(x)-q(x)\\) [4]      That's it! \\(v\\) isn't even that hard to calculate: just take \\(\\frac{p(x_i)}{q(x_i)}\\). [5]  (Comment references 4 5)\n​\nPractical implementation In practice, we have a tradeoff between the speed of our approximation model and the fidelity of its outputs. Small models This paper has some fun ideas on how you might implement the algorithm in a real world setting: have a bunch of potential completions, and have stages of speculative decoding, where the simplest models capture any incredibly obvious patterns and the medium size models capture more nuanced combinations. ​\nPotential research directions ​ Send me a link if you find a paper on this or an email if you want to chat about it! Unfortunately booked at the moment but I think these are all good ideas. ​\n Contrastive staged speculative decoding. You can approximate a big model with a medium size model. Try approximating the difference between a big model and a medium model with the difference between the outputs of a medium model and a small model! Leverage the benefits of contrastive decoding while still being speculative! Early stopping / AlBERT style speculative decoding. What if the outputs of your q(x) would save you time for computing p(x)? This is achievable as long as your small model and large model share parameters. Two easy ways to make this work are to use something like early stopping or AlBERT. Distillation to improve the fidelity of small models to large models! Actually, if you find good papers for LLM (1B model student and teacher) distillation, send them my way. Integrate PagedAttention into a branched / staged system. I think its actually extremely helpful in this use case to handle the shared prefill.    the cuda documentation is actually very good. I know this sounds like I am recommending a torture device, but the first few sections provide a great overview of the architecture and abstractions necessary if you want to go deeper in understanding the topics I touch on today ↩︎\n because hell is empty and all the devils are here this team of workers is called a “streaming multiprocessor”, or SM by nvidia. This is an issue because the memory that the members of the team is called “shared memory”, abbreviated “SM” by everyone but nvidia. ​ ↩︎\n in reality there is a complex corporate structure in the GPU, i.e. there are multiple layers of hierarchy on both the hardware and software side. One worker is a thread. A GPU is divided into GPU Processing Cluster, each of which can contain a thread block cluster. The thread block cluster is subdivided into thread blocks, which each run on a streaming multiprocessor. The individual thread blocks are subdivided into warps, which consist of a set of threads which all run at the same time. ​ ↩︎\n Yes this isn’t a probability distribution, yes you need to normalize it. The normalization makes the algorithm look more complicated than it is, and while this is wrong it is easier to understand. I wrote the entire algorithm without one division sign! ↩︎\n Proving this is actually equivalent is a good way to really understand the algorithm. Ideally you can do so with less hand waving than the paper itself. ↩︎\n   ",
-  "wordCount" : "1330",
+  "articleBody": "   Speculative decoding combines two things I love: clever systems optimizations and probability. As a result, we have a lot to get through. Lets dig in!\nBackground: the problem Suppose you want to run an LLM interactively on your local machine. You have a single GPU, say a GTX 4090. It’s a high-end card, costing $1600, but it’s much cheaper than an A100 or H100 might be. What challenges do you face?\nFirst, the model may not fit on your GPU. Llama2-70B would require 140GB stored in 16-bit precision, 6x larger than what can fit on your device. This problem can be solved by using a smaller model, opting for lower precision through quantization, or both. You compromise and load a 30B parameter model in 4-bit precision. This requires 15GB of storage, leaving you with ample space.\nHowever, you discover that, despite being able to fit your model, it runs at a glacial pace. Huggingface transformers can generate only a few tokens per second at best. Sometimes, it doesn’t even achieve that. You search online for optimized implementations and come across something like exllama that is written in C++ and CUDA. By switching to this well-written optimized code, you find the throughput is closer to 50 tokens per second. That’s an order of magnitude improvement without any change in hardware!\nThis observation gets you thinking. Surely, 50 tokens per second isn’t the limit, right? There must be a way to achieve faster speeds. Reflecting on the process, you realize that your input prompt processes through the model at a stunning rate, 60x faster than token generation. Mathematically, the prompt undergoes the same procedure as the generated tokens, yet for some reason, one is nearly two orders of magnitude faster than the other. Why is this the case? Both algorithms show 100% utilization on nvidia-smi!\n We’ll dive into speculative decoding shortly. But first, let’s delve into GPU Architecture! From the architecture whitepaper, your RTX4090 looks like this under the hood:\nFig 1. Architecture diagram of RTX 4090. Zooming in on those streaming multiprocessors (SM), we observe the following structure:\nFig 2. Zoomed in diagram of the streaming multiprocessor (SM).  What does this all mean? And what does it have to do with the generation being so slow? Lets go over all the acronyms in these two pictures:\nThe processing hierarchy, from top to bottom:  An NVIDIA GPU is split into various GPU Processing Clusters (GPCs). An RTX4090 has 7. A GPC is split into various streaming multiprocessors (SMs). An RTX4090 has 128 SMs, sixteen per GPC. An SM is split into four processing blocks. On an RTX4090, each SM has four processing blocks.  The job hierarchy, from bottom to top:  A thread is an individual unit of work. It executes computation in serial. 32 threads are organized in a warp. All threads in a warp run at the same time on the same SM and processing block. An SM can have up to 64 warps scheduled. Several warps are organized in a thread block. All threads in a thread block are guaranteed to run on the same SM, but not necessarily at the same time. A thread block can have up to 1024 threads, or 32 warps. Thread blocks can (optionally, and only on very recent hardware) be organized into thread block clusters, which run on the same GPU Processing Cluster.  The memory hierarchy, from bottom to top (IMPORTANT):  Registers / L0 cache - holds per thread or warp. The L0 cache also contains information on which warp is currently running, an SM can have up to 64 warps queued but can only run 4 at a time. One per processing block. L1 / shared memory[^1] - this holds information shared between all threads in a thread block. It is quite small (128KB / SM, or 16MB across all SMs), but very fast. Can be explicitly accessed. One per SM L2 - 72 MB (in this case) of shared cache. Shared between many SMs and GPCs. Some GPUs have one L2 cache, while some have multiple. Main memory - 24GB of memory. Incredibly slow to access versus L0/L1, and much slower than L2  Misc., from most relevant to least:  Tensor cores do the sweet sweet number crunching used in matmuls. They can only do matrix multiplications of block sizes of blocks eight to sixteen on a side. There is one per SM. The CUDA Cores (labeled FP32/Int32 on the diagram) do most of the standard operations outside of matmuls, such as addition, multiplication, etc. They can work on any size, and are roughly an order of magnitude slower than the tensor cores. The SFU handles \"special\" functions, like log, sin, and sqrt The RT core does ray tracing. Ignore for now. TPC, PolyMorph, and Tex are all pure texture/graphics related. Ignore for now.    For the curious, all that nvidia-smi measures is how often a kernel is executing on the GPU. Any kernel on any part of the GPU would show up as GPU utilization. Adding two vectors together in shared memory on a single SM can achieve 100% utilization for the entire GPU based on nvidia-smi, purely because at every clock step one kernel is executing one step.\nThis is why something can be insanely slow and still show 100% nvidia-smi usage!\n Why did we go into GPU Architecture? GPU architecture explains precisely why there is a slowdown between processing input prompts (also training) and generation!\n (TLDR) On small-batch auto-regressive generation for LLMs, GPUs waste compute cycles on moving the model weights instead of actually computing the output!\n To understand why, let's consider the first part of the MLP in a single layer of our transformer. Running the feedforward linear layer on our GPU requires executing several operations. Given a weight matrix \\( W \\) (defined as \\( d_{\\mathsf{model}} \\times d_{\\mathsf{ff}} \\)) and an input \\( X \\) (defined as \\( n \\times d_{\\mathsf{model}} \\)), we produce an output \\( Y \\) (defined as \\( n \\times d_{\\mathsf{ff}} \\)) in the following manner:\n Divide the problem into several thread blocks. For each thread block, read the relevant submatrix in \\( W \\) and \\( X \\) into shared memory. Compute the relevant submatrix of \\( Y \\) and store it in shared memory[a]. Write this submatrix to the main memory.  At the very minimum, our operations will consist of:\n \\( d_{\\mathsf{model}} d_{\\mathsf{ff}} + nd_{\\mathsf{model}} + nd_{\\mathsf{ff}} \\) reads and writes transitioning from main memory to shared memory.[b] \\( nd_{\\mathsf{model}}d_{\\mathsf{ff}} \\) floating point operations, commonly referred to as flops.  For the llama2 30B model, where \\( d_{\\mathsf{model}} = 6656 \\) and \\( d_{\\mathsf{ff}} = 17920 \\), and given a prompt of 1024 tokens, we calculate:\n\\( 2 \\times (1024 \\times 6656 + 1024 \\times 17920 + 6656 \\times 17920) = 274 \\)MB in 16-bit reads and writes, or 110MB when utilizing four-bit weight quantization. Additionally, it necessitates 122GFlops of 16-bit arithmetic.\nIf we momentarily set aside all complexities and make a series of generalized assumptions, we can estimate the time required for this operation by dividing the first quantity by the GPU's memory bandwidth, and the second value by the GPU's maximum 16-bit throughput. With our GPU's bandwidth being 1TB/sec and its peak 16-bit throughput reaching 330 trillion floating point operations every second, we derive the following approximate times:\n 0.3ms for reads/writes without quantization, or 0.1ms with. 0.3ms for computation.[c]  Bearing in mind that this calculation is for a batch of 1024 tokens, this translates to less than a microsecond per individual token. But let's re-evaluate these figures for just one token:\nHow do we proceed with this? With a tally of 60MB/238MB reads/writes with and without quantization respectively, we have only 120MFlops worth of calculations to perform. The resulting times are:\n 0.25ms for reads and writes when not using quantization, or 0.05ms with it. 0.3 microseconds (or .0003ms) for computation. Given the inability to utilize tensor cores, a more accurate figure might be 0.003ms.  To our surprise, we find that the performance is almost three orders of magnitude slower on a per-token basis! We are spending more time reading and writing than actually making calculations. [a] Note that I'm glossing over a ton of detail in how you divide the problem.  [b] The division of the problem as well as the details of reads and writes are ignored in this post, but have a massive impact. You can't actually achieve this level of efficiency in reads and writes easily in practice. Note, for example, that in this case the size of the reads and writes exceeds the size of the L1/L2 cache without quantization. [c] Do you add or take the maximum of these numbers? The answer is complicated. Ideally, we use computation to hide communication, but this rarely works out perfectly in practice.    So… speculative decoding? What if we made generation more like prefill? How would we do this? We need our model to process more than one token at once. However, to process a token, we need to know that it is part of our output, which we are trying to determine in the first place!\nWe can’t generate multiple tokens simultaneously without violating joint distribution assumptions1. To achieve accurate and faithful generation, we need to guess. To do this, we employ an ancient method of problem-solving: guess and check.\nThe model we use to guess can vary. In Blockwise Parallel Decoding for Deep Autoregressive Models, different heads on the same model predicts multiple future tokens (fine-tuned to do so), and the original head checks them. This approach still suffers from the joint distribution problem1. Alternatively, we could perform autoregressive decoding on a smaller model.\nIt’s important to note that strictly more computation (floating-point operations) is done with speculative decoding, yet we can achieve higher generation throughput. The reason it still saves time is that loading the weights of the small model is much cheaper than the large one, and each token you correctly guess for the future saves an entire load of the model.\nSpeculative decoding is simply a method to guess in a systematic way using a smaller LLM and to check in a manner that ensures our outputs are identical to using the original. This is what happens in Fast Inference from Transformers via Speculative Decoding and Accelerating Large Language Model Decoding with Speculative Sampling. This may remind you of rejection sampling; we generate candidates using the smaller model and employ the larger model to decide whether we want to accept or reject the sample. We will get into the details shortly.\nThe final piece of this narrative is the mathematics that makes the outputs of this process identical to the original. Many naive algorithms accidentally oversample outputs that are more common in the smaller model, as they will be guessed by the smaller model more frequently. If you aren’t concerned about exact replication, you can achieve slightly faster results, which is what Speculative Decoding with Big Little Decoder does.\n Probability time For a detailed explanation, refer to the original paper. A brief summary is provided below.\n Let \\( p(x) \\) be the large model's probability distribution, and \\( q(x) \\) represent the smaller model's distribution. We'll be employing a variation of rejection sampling.\n Sample \\( n \\) tokens from \\( q(x) \\), called \\( x_1 ... x_n \\). Generate the logits of the \\( n \\) tokens from \\( p(x) \\) For each token \\( x_i \\), decide whether to accept it based on the following criteria:  If \\( q(x_i) Otherwise, sample a random number \\( r \\) from \\( [0,1] \\) and compare it to some value \\( v \\). We calculate \\( v \\) as \\( \\frac{p(x_i)}{q(x_i)} \\).    If it is less than \\( v \\) , accept anyways If it was greater than \\( v \\), reject, break the loop, and sample the current token from the distribution \\( p(x)-q(x) \\) where it is positive, normalized to be a probability distribution.  There are several levels of rigor to prove that this algorithm works. We now detail the most intuitive, albeit hand-wavy, explanation:\nAssuming \\( q(x_i)  p(x_i) \\), the probability that our system selects token \\( x_i \\) is given by \\( q(x_i) \\cdot \\frac{p(x_i)}{q(x_i)} = p(x_i) \\). When \\( q(x_i) A more rigorous proof is available in the paper, where the distribution specified in step 5 is calculated, along with the probability of any token being sampled from this distribution. The normalization constant is also derived, and the distribution is computed.\nIn practice, we can leverage the probability distributions of the two models to estimate the number of tokens the smaller model is likely to predict. From the above explanations, the acceptance probability can be calculated as:\n Define \\( D \\) as a distance metric: \\( D(p,q) = \\sum_x |\\frac{p(x) - q(x)}{2}| = 1-\\sum_x \\min(p(x), q(x)) \\). This is a symmetric divergence for those interested. The acceptance probability \\( \\beta \\) for a specific token \\( x_i \\) is \\( \\frac{p(x_i)}{q(x_i)} \\) if \\( q(x_i)p(x_i) \\) and 1 otherwise. This can also be represented as \\( \\min(1, \\frac{p(x_i)}{q(x_i)})=\\frac{\\min(p(x_i),q(x_i))}{q(x_i)} \\). We sample from \\( q(x) \\), hence the general acceptance probability \\( \\alpha = E(\\beta) = \\sum_x q(x) \\frac{\\min(p(x),q(x))}{q(x)} =1-E(D(p,q)) \\).  If \\( \\gamma \\) is the number of tokens predicted by the smaller model, then the expected throughput of tokens per iteration for the large model, given an arbitrary acceptance probability \\( \\alpha \\), is visualized in the following figure:\nNot bad! However, in the context of this paper and others, \\( \\alpha \\) often hovers around 0.6 to 0.7. The acceptance probability depends on not only how accurate the smaller model is but also its relative generation speed compared to the larger model. In the worst case scenario where the smaller model fails to predict beyond a single token at every iteration, speculative decoding would run slower than not having it in the first place! For LLMs, most works rely on using smaller network from the same model/data family. In the paper we just discussed one would use T5-XXL with T5-BASE/LARGE or LAMDA (137B) with LAMDA (2~8B), something usually in the order of magnitude smaller (in more modern model lingo terms, using LLama2-70B for the bigger model and Llama2-7B as the smaller one). Then the compute break down would look something this:\nFig 3. Simplified transfomer trace diagram. Figure 5. from `Fast Inference from Transformers via Speculative Decoding '.   In summary, smaller model is typically much tinier than the original, making its guessing speed negligible compared to the larger model's checking process. The performance speed up is proprtionate to the small model's ability to approximate the larger one.  But... we still aren't even close! Using speculative decoding, even with an excellent approximation, we won't generate more than 3-5 tokens per iteration, denoted as \\( \\gamma \\) previously. This might result in a potential 3x speedup at best, which is still short from bridging the theoretical performance gap that is in the orders of magnitude larger.\nEfforts have been made to bridge this gap. The paper \"Accelerating LLM Inference with Staged Speculative Decoding\" introduces two main innovations:\n Employing multiple levels of speculative decoding. Generating multiple branched predictions simultaneously.  The latter is somewhat challenging due to nuances in KV caching. The paper doesn't disclose their acceptance probability, and their outcomes are modest. Their method increase the speedup from 2.5x to 3x, but at the expense of introducing substantial complexity.\nPersonally, I believe there's significant potential yet to be unlocked in this domain. If I were to speculate on the sources of future advancements, I'd anticipate the following:\n Early stopping or AlBERT-style strategies: If the logits of the smaller model could expedite the final decoding. This could be further enhanced using distillation. One might also adopt aggressive staging, performing only the essential computation needed to reject a proposal.   Adoption of techniques like Paged Attention to explore multiple branches efficiently at once. Implementing structured pruning in tandem with distillation when designing the smaller model. This approach might yield efficient models boasting higher acceptance probabilities.   Conclusion This post is close to 3000 words, when blog posts are usually kept to the smaller side of a thousand. Congratulations on reading this far, and I hoped you learned something!\n  Imagine you are playing a guessing game with an LLM of the city you grew up in. Given that you are reading this article, it gives a 30% probability of the bay area, and 20% of new york city. If you were generating multiple tokens at once, you might say that for the first token, new and san have 20/30% probability, and for the second york and fran_ have 20/30% probability. A sampling algorithm might pick san york city or even new francity, which are impossible. ↩︎\n   ",
+  "wordCount" : "2786",
   "inLanguage": "en",
-  "datePublished": "2023-09-30T00:00:00Z",
-  "dateModified": "2023-09-30T00:00:00Z",
+  "datePublished": "2023-09-13T00:00:00Z",
+  "dateModified": "2023-09-13T00:00:00Z",
   "author":{
     "@type": "Person",
     "name": "Ani Nrusimha"
@@ -82,7 +82,7 @@ Author: &nbspAni Nrusimha
   },
   "publisher": {
     "@type": "Organization",
-    "name": "scale + algorithms",
+    "name": "",
     "logo": {
       "@type": "ImageObject",
       "url": "https://minyoungg.github.io/mlscale/favicon.ico"
@@ -103,7 +103,6 @@ Author: &nbspAni Nrusimha
 <header class="header">
     <nav class="nav">
         <div class="logo">
-            <a href="https://minyoungg.github.io/mlscale/" accesskey="h" title="scale &#43; algorithms (Alt + H)">scale &#43; algorithms</a>
             <span class="logo-switches">
                 <button id="theme-toggle" accesskey="t" title="(Alt + T)">
                     <svg id="moon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
@@ -128,11 +127,6 @@ Author: &nbspAni Nrusimha
             </span>
         </div>
         <ul id="menu">
-            <li>
-                <a href="https://minyoungg.github.io/mlscale/about/" title="About">
-                    <span>About</span>
-                </a>
-            </li>
         </ul>
     </nav>
 </header>
@@ -145,9 +139,9 @@ Author: &nbspAni Nrusimha
       Speculative decoding
     </h1>
     <div class="post-description">
-      add description for the article
+      A brief overview of speculative decoding, detailing the roots of LLM inference slowdowns and how algorithmic level changes can improve generation speed!
     </div>
-    <div class="post-meta"><span title='2023-09-30 00:00:00 +0000 UTC'>September 30, 2023</span>&nbsp;·&nbsp;7 min&nbsp;·&nbsp;
+    <div class="post-meta"><span title='2023-09-13 00:00:00 +0000 UTC'>September 13, 2023</span>&nbsp;·&nbsp;14 min&nbsp;·&nbsp;
 Author: &nbspAni Nrusimha
 &nbsp | &nbsp Editor: &nbspMinyoung Huh
 
@@ -160,21 +154,29 @@ Author: &nbspAni Nrusimha
 
         <div class="inner"><ul>
                 <li>
-                    <a href="#so-you-want-to-use-a-large-language-model-on-device" aria-label="So you want to use a large language model on device">So you want to use a large language model on device</a></li>
+                    <a href="#background-the-problem" aria-label="Background: the problem">Background: the problem</a></li>
                 <li>
-                    <a href="#the-problem" aria-label="The problem">The problem</a><ul>
+                    <a href="#well-dive-into-speculative-decoding-shortly-but-first-lets-delve-into-gpu-architecture" aria-label="We&amp;rsquo;ll dive into speculative decoding shortly. But first, let&amp;rsquo;s delve into GPU Architecture!">We&rsquo;ll dive into speculative decoding shortly. But first, let&rsquo;s delve into GPU Architecture!</a><ul>
                         
                 <li>
-                    <a href="#side-note-why-does-nvidia-smi-lie" aria-label="Side note: why does nvidia-smi lie?">Side note: why does nvidia-smi lie?</a></li></ul>
+                    <a href="#" aria-label="The processing hierarchy, from top to bottom:">The processing hierarchy, from top to bottom:</a></li>
+                <li>
+                    <a href="#" aria-label="The job hierarchy, from bottom to top:">The job hierarchy, from bottom to top:</a></li>
+                <li>
+                    <a href="#" aria-label="The memory hierarchy, from bottom to top (IMPORTANT):">The memory hierarchy, from bottom to top (IMPORTANT):</a></li>
+                <li>
+                    <a href="#" aria-label="Misc., from most relevant to least:">Misc., from most relevant to least:</a></li></ul>
                 </li>
                 <li>
-                    <a href="#lets-get-creative" aria-label="Lets get creative">Lets get creative</a></li>
+                    <a href="#why-did-we-go-into-gpu-architecture" aria-label="Why did we go into GPU Architecture?">Why did we go into GPU Architecture?</a></li>
                 <li>
-                    <a href="#the-math" aria-label="The math">The math</a></li>
+                    <a href="#so-speculative-decoding" aria-label="So&amp;hellip; speculative decoding?">So&hellip; speculative decoding?</a></li>
                 <li>
-                    <a href="#practical-implementation" aria-label="Practical implementation">Practical implementation</a></li>
+                    <a href="#probability-time" aria-label="Probability time">Probability time</a></li>
                 <li>
-                    <a href="#potential-research-directions" aria-label="Potential research directions">Potential research directions</a>
+                    <a href="#" aria-label="But... we still aren&#39;t even close!">But... we still aren't even close!</a></li>
+                <li>
+                    <a href="#conclusion" aria-label="Conclusion">Conclusion</a>
                 </li>
             </ul>
         </div>
@@ -189,99 +191,172 @@ Author: &nbspAni Nrusimha
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.11.1/dist/contrib/auto-render.min.js" integrity="sha384-kWPLUVMOks5AQFrykwIup5lo0m3iMkkHrD0uJ4H5cjeGihAutqP0yW0J6dpFiVkI" crossorigin="anonymous" onload="renderMathInElement(document.body);"></script>
 
 
-<p><em>captions are tangents unimportant to the rest of the article.</em></p>
-<h3 id="so-you-want-to-use-a-large-language-model-on-device">So you want to use a large language model on device<a hidden class="anchor" aria-hidden="true" href="#so-you-want-to-use-a-large-language-model-on-device">#</a></h3>
-<p>Only problem. Despite only running a sequence at a time, your model takes <em>forever</em> to run.
-What gives? You check nvidia-smi, and you are at 100% utilization.
-Perhaps you go even further. You calculate the number of floating point operations that your model performs, and divide by the number of operations that your GPU can do per second. You find an absurd number: off by several orders of magnitude.
-Is nvidia-smi lying to you? How do you estimate how fast your model will run? How do you make your model faster without changing your outputs <em>at all</em>?
-The answers to these questions are:</p>
+<p>Speculative decoding combines two things I love: clever systems optimizations and probability. As a result, we have a lot to get through. Lets dig in!</p>
+<h3 id="background-the-problem">Background: the problem<a hidden class="anchor" aria-hidden="true" href="#background-the-problem">#</a></h3>
+<p>Suppose you want to run an LLM interactively on your local machine.
+You have a single GPU, say a GTX 4090. It&rsquo;s a high-end card, costing $1600, but it&rsquo;s much cheaper than an A100 or H100 might be. What challenges do you face?</p>
+<p>First, the model may not fit on your GPU. <a href="https://ai.meta.com/llama/">Llama2-70B</a> would require 140GB stored in 16-bit precision, 6x larger than what can fit on your device. This problem can be solved by using a smaller model, opting for lower precision through quantization, or both.
+You compromise and load a 30B parameter model in 4-bit precision. This requires 15GB of storage, leaving you with ample space.</p>
+<p>However, you discover that, despite being able to fit your model, it runs at a glacial pace. Huggingface transformers can generate only a few tokens per second at best. Sometimes, it doesn&rsquo;t even achieve that. You search online for optimized implementations and come across something like <a href="https://github.com/turboderp/exllamav2">exllama</a> that is written in C++ and CUDA. By switching to this well-written optimized code, you find the throughput is closer to 50 tokens per second. That&rsquo;s an order of magnitude improvement without any change in hardware!</p>
+<p>This observation gets you thinking. Surely, 50 tokens per second isn&rsquo;t the limit, right? There must be a way to achieve faster speeds. Reflecting on the process, you realize that your input prompt processes through the model at a stunning rate, <strong>60x faster</strong> than token generation. Mathematically, the prompt undergoes the same procedure as the generated tokens, yet for some reason, one is nearly two orders of magnitude faster than the other. Why is this the case? Both algorithms show 100% utilization on nvidia-smi!</p>
+<br/>
+<h3 id="well-dive-into-speculative-decoding-shortly-but-first-lets-delve-into-gpu-architecture">We&rsquo;ll dive into speculative decoding shortly. But first, let&rsquo;s delve into GPU Architecture!<a hidden class="anchor" aria-hidden="true" href="#well-dive-into-speculative-decoding-shortly-but-first-lets-delve-into-gpu-architecture">#</a></h3>
+<p>From <a href="https://images.nvidia.com/aem-dam/Solutions/Data-Center/l4/nvidia-ada-gpu-architecture-whitepaper-v2.1.pdf">the architecture whitepaper</a>, your RTX4090 looks like this under the hood:</p>
+<p class="cssclass1 cssclass2">
+  <img src="./images/speculative_decoding/img1.png" alt="Logo" title="Logo title">
+  <p style="color:grey;font-size: 0.6vw;">Fig 1. Architecture diagram of RTX 4090.</em>
+</p>
+<p>Zooming in on those streaming multiprocessors (SM), we observe the following structure:</p>
+<p class="cssclass1 cssclass2">
+  <img src="./images/speculative_decoding/img2.png" alt="Logo" title="Logo title">
+  <p style="color:grey;font-size: 0.6vw;">Fig 2. Zoomed in diagram of the streaming multiprocessor (SM). </em>
+</p>
+<p>What does this all mean? And what does it have to do with the generation being so slow?
+Lets go over all the acronyms in these two pictures:</p>
+<div style="padding: 15px 15px 15px 25px; border: 1px solid #e0e0e0; border-radius: 5px; font-size: 0.6vw;">
+<h4>The processing hierarchy, from top to bottom:</h4>
 <ol>
-<li>technically no, but basically yes</li>
-<li>you find the bottleneck, which for batch size <cite>one<sup id="fnref:1"><a href="#fn:1" class="footnote-ref" role="doc-noteref">1</a></sup></cite> inference is memory movement for weight data.</li>
-<li>you get creative, and use something like speculative decoding.
-​</li>
+    <li>An NVIDIA GPU is split into various GPU Processing Clusters (GPCs). An RTX4090 has 7.</li>
+    <li>A <u style="color:#e76f51">GPC</u> is split into various streaming multiprocessors (SMs). An RTX4090 has 128 SMs, sixteen per GPC.</li>
+    <li>An <u style="color:#e76f51">SM</u> is split into four processing blocks. On an RTX4090, each SM has four processing blocks.</li>
 </ol>
-<h3 id="the-problem">The problem<a hidden class="anchor" aria-hidden="true" href="#the-problem">#</a></h3>
-<p>Machine learning, from a systems perspective, is matrix multiplication with some additional spice. GPUs are like a big company, and split up the matrix computation into many small parts, and assign teams of workers to compute on each part. To vastly oversimplify a complex structure<sup id="fnref:1"><a href="#fn:1" class="footnote-ref" role="doc-noteref">1</a></sup>, each team has a little bit of shared memory and a bunch of workers which have an absolutely tiny amount of registers in addition to the shared memory <sup id="fnref:2"><a href="#fn:2" class="footnote-ref" role="doc-noteref">2</a></sup>. The GPU itself has a huge buffer of memory that is globally accessible but far away from the individual SMs.
-​
-While the size of the global buffer can be as large as 80 GB on a A100 or H100, the size of the shared memory is on the order of hundreds of kilobytes per &ldquo;team&rdquo;<sup id="fnref:3"><a href="#fn:3" class="footnote-ref" role="doc-noteref">3</a></sup>. Each SM can only store the weights (model parameters) and activations (model intermediate computations) needed for its immediate subtask, with the size of the subtasks<sup id="fnref:3"><a href="#fn:3" class="footnote-ref" role="doc-noteref">3</a></sup> carefully selected to fit into this small amount of memory.
-​
-This means that generating one token requires loading the entire model from main memory to shared memory at least once. The cost of this memory movements dwarfs the cost of computation.
-​</p>
-<h4 id="side-note-why-does-nvidia-smi-lie">Side note: why does nvidia-smi lie?<a hidden class="anchor" aria-hidden="true" href="#side-note-why-does-nvidia-smi-lie">#</a></h4>
-<p>Nvidia-smi&rsquo;s utilization takes into account how much of the GPU is <em>being used</em>, and has essentially on information on how effectively the GPU is being used. If you don&rsquo;t have 99-100% utilization in nvidia-smi, parts of the GPU have nothing to do.
-​
-As any grad student knows, working a lot does not mean getting a lot of work done. nvidia-smi is measuring the former. The workers are spending the vast majority of their time waiting for stuff, but they have a task to do. As a result, nvidia-smi reports utilization at 100%
-​</p>
-<h3 id="lets-get-creative">Lets get creative<a hidden class="anchor" aria-hidden="true" href="#lets-get-creative">#</a></h3>
-<p>​
-This reality leads to an interesting implication. We have &ldquo;free compute&rdquo; - we could multiply the amount of computation we do without meaningfully increasing the amount of time it takes.
-​
-To make a long story short, this is the first core insight that leads to speculative decoding. For LLMs specifically, this insight explains why generating the logits of a short sentence will take around the same amount of time as generating a single word. Both involving multiplying all the weight matrices by some activations, and both the cost of memory movement for those activations and the cost of the multiplication pale in comparison to the cost of moving the weights.
-​
-This means that if you are able to reliably and quickly generate good candidate words for a sentence, you can verify the quality of the sentence much faster than generating it would have taken. The second key insight is fairly obvious: we already have small models that do a decent job of approximating larger ones! Use your 1B parameter model to accelerate your 7B, or 7B to accelerate 70B.
-​
-Once you realize these two key ideas, the rest is math to make sure that the results from your scheme <em>exactly</em> match the outputs from the original model.
-​</p>
-<h3 id="the-math">The math<a hidden class="anchor" aria-hidden="true" href="#the-math">#</a></h3>
-<p>​
-See <a href="https://arxiv.org/abs/2211.17192">the original paper</a> for a detailed explanation. A short version is below.
-​</p>
-<div style="background-color: #6c757d; padding: 15px 15px 15px 25px; border: 1px solid #e0e0e0; border-radius: 5px; font-family: 'Consolas', monospace; font-size: 0.9em">
-<p> Let \(p(x)\) be the large model probability distribution, and \(q(x)\) be the smaller one. We are going to do a variant of something called <a href="https://en.wikipedia.org/wiki/Rejection_sampling">rejection sampling</a>.</p>
-<ol style="padding-left: 25px;">
-    <li>Sample \(n\) tokens from \(q(x)\), called \(x_1 ... x_n\). </li>
-    <li>Generate the logits of the \(n\) tokens from \(p(x)\)</li>
-    <li>For each token \(x_i\), decide whether to accept it based on the following criteria:
-        <ol style="padding-left: 25px;">
-            <li>If \(q(x_i) < p(x_i)\), accept and move to the next token</li>
-            <li>Otherwise, sample a random number \(r\) from \([0,1]\) and compare it to some value \(v\). I will explain how to calculate \(v\) later.
-                <ol style="padding-left: 25px;">
-                    <li>If it is less than \(v\), accept anyways</li>
-                    <li>If it was greater than \(v\), reject, break the loop, and sample the current token from the distribution \(p(x)-q(x)\) <a href="#note4" id="ref4">[4]</a></li>
-                </ol>
-            </li>
+<h4>The job hierarchy, from bottom to top:</h4>
+<ol>
+    <li>A <u style="color:#e76f51">thread</u> is an individual unit of work. It executes computation in serial.</li>
+    <li>32 threads are organized in a <u style="color:#e76f51">warp</u>. All threads in a warp run at the same time on the same SM and processing block. An SM can have up to 64 warps scheduled.</li>
+    <li>Several warps are organized in a <u style="color:#e76f51">thread block</u>. All threads in a thread block are guaranteed to run on the same SM, but not necessarily at the same time. A thread block can have up to 1024 threads, or 32 warps.</li>
+    <li>Thread blocks can (optionally, and only on very recent hardware) be organized into <u style="color:#e76f51">thread block clusters</u>, which run on the same GPU Processing Cluster.</li>
+</ol>
+<h4>The memory hierarchy, from bottom to top (IMPORTANT):</h4>
+<ol>
+    <li><u style="color:#e76f51">Registers / L0 cache</u> - holds per thread or warp. The L0 cache also contains information on which warp is currently running, an SM can have up to 64 warps queued but can only run 4 at a time. One per processing block.</li>
+    <li><u style="color:#e76f51">L1 / shared memory</u>[^1] - this holds information shared between all threads in a thread block. It is quite small (128KB / SM, or 16MB across all SMs), but very fast. Can be explicitly accessed. One per SM</li>
+    <li><u style="color:#e76f51">L2</u> - 72 MB (in this case) of shared cache. Shared between many SMs and GPCs. Some GPUs have one L2 cache, while some have multiple.</li>
+    <li><u style="color:#e76f51">Main memory</u> - 24GB of memory. Incredibly slow to access versus L0/L1, and much slower than L2</li>
+</ol>
+<h4>Misc., from most relevant to least:</h4>
+<ol>
+    <li><u style="color:#e76f51">Tensor</u> cores do the sweet sweet number crunching used in matmuls. They can only do matrix multiplications of block sizes of blocks eight to sixteen on a side. There is one per SM.</li>
+    <li>The <u style="color:#e76f51">CUDA Cores</u> (labeled FP32/Int32 on the diagram) do most of the standard operations outside of matmuls, such as addition, multiplication, etc. They can work on any size, and are roughly an order of magnitude slower than the tensor cores.</li>
+    <li>The <u style="color:#e76f51">SFU</u> handles "special" functions, like log, sin, and sqrt</li>
+    <li>The <u style="color:#e76f51">RT core</u> does ray tracing. Ignore for now.</li>
+    <li><u style="color:#e76f51">TPC, PolyMorph, and Tex</u> are all pure texture/graphics related. Ignore for now.</li>
+</ol>
+</div>
+<br/>
+<p>For the curious, all that nvidia-smi measures is how often a kernel is executing on the GPU. <em>Any</em> kernel on <em>any</em> part of the GPU would show up as GPU utilization. Adding two vectors together in shared memory on a single SM can achieve 100% utilization for the entire GPU based on nvidia-smi, purely because at every clock step one kernel is executing one step.</p>
+<p><strong>This is why something can be insanely slow and still show 100% nvidia-smi usage!</strong></p>
+<br/>
+<h3 id="why-did-we-go-into-gpu-architecture">Why did we go into GPU Architecture?<a hidden class="anchor" aria-hidden="true" href="#why-did-we-go-into-gpu-architecture">#</a></h3>
+<p>GPU architecture explains precisely why there is a slowdown between processing input prompts (also training) and generation!</p>
+<blockquote>
+<p>(TLDR) On small-batch auto-regressive generation for LLMs, GPUs waste compute cycles on moving the model weights instead of actually computing the output!</p>
+</blockquote>
+<p>To understand why, let's consider the first part of the MLP in a single layer of our transformer. Running the feedforward linear layer on our GPU requires executing several operations. Given a weight matrix \( W \) (defined as \( d_{\mathsf{model}} \times d_{\mathsf{ff}} \)) and an input \( X \) (defined as \( n \times d_{\mathsf{model}} \)), we produce an output \( Y \) (defined as \( n \times d_{\mathsf{ff}} \)) in the following manner:</p>
+<ol>
+    <li>Divide the problem into several thread blocks.</li>
+    <li>For each thread block, read the relevant submatrix in \( W \) and \( X \) into shared memory.</li>
+    <li>Compute the relevant submatrix of \( Y \) and store it in shared memory<sup><a href="#footnote2">[a]</a></sup>.</li>
+    <li>Write this submatrix to the main memory.</li>
+</ol>
+<p>At the very minimum, our operations will consist of:</p>
+<ul>
+    <li>\( d_{\mathsf{model}} d_{\mathsf{ff}} + nd_{\mathsf{model}} + nd_{\mathsf{ff}} \) reads and writes transitioning from main memory to shared memory.<sup><a href="#footnote3">[b]</a></sup></li>
+    <li>\( nd_{\mathsf{model}}d_{\mathsf{ff}} \) floating point operations, commonly referred to as flops.</li>
+</ul>
+<p>For the llama2 30B model, where \( d_{\mathsf{model}} = 6656 \) and \( d_{\mathsf{ff}} = 17920 \), and given a prompt of 1024 tokens, we calculate:</p>
+<p>\( 2 \times (1024 \times 6656 + 1024 \times 17920 + 6656 \times 17920) = 274 \)MB in 16-bit reads and writes, or 110MB when utilizing four-bit weight quantization. Additionally, it necessitates 122GFlops of 16-bit arithmetic.</p>
+<p>If we momentarily set aside all complexities and make a series of generalized assumptions, we can estimate the time required for this operation by dividing the first quantity by the GPU's memory bandwidth, and the second value by the GPU's maximum 16-bit throughput. With our GPU's bandwidth being 1TB/sec and its peak 16-bit throughput reaching 330 trillion floating point operations every second, we derive the following approximate times:</p>
+<ul>
+    <li>0.3ms for reads/writes without quantization, or 0.1ms with.</li>
+    <li>0.3ms for computation.<sup><a href="#footnote4">[c]</a></sup></li>
+</ul>
+<p>Bearing in mind that this calculation is for a batch of 1024 tokens, this translates to less than a microsecond per individual token. But let's re-evaluate these figures for just one token:</p>
+<p>How do we proceed with this? With a tally of 60MB/238MB reads/writes with and without quantization respectively, we have only 120MFlops worth of calculations to perform. The resulting times are:</p>
+<ul>
+    <li>0.25ms for reads and writes when not using quantization, or 0.05ms with it.</li>
+    <li>0.3 microseconds (or .0003ms) for computation. Given the inability to utilize tensor cores, a more accurate figure might be 0.003ms.</li>
+</ul>
+<p>To our surprise, we find that the performance is almost three orders of magnitude slower on a per-token basis! We are spending more time reading and writing than actually making calculations. </p>
+<!-- Footnotes -->
+<div style="padding: 15px 15px 15px 25px; border: 1px solid #e0e0e0; border-radius: 5px; font-size: 0.6vw;">
+<ul id="footnotes" style="list-style-type: none; margin: 0; padding: 0;">
+    <li id="footnote2">[a] Note that I'm glossing over a ton of detail in how you divide the problem. </li>
+    <li id="footnote3">[b] The division of the problem as well as the details of reads and writes are ignored in this post, but have a massive impact. You can't actually achieve this level of efficiency in reads and writes easily in practice. Note, for example, that in this case the size of the reads and writes exceeds the size of the L1/L2 cache without quantization.</li>
+    <li id="footnote4">[c] Do you add or take the maximum of these numbers? The answer is complicated. Ideally, we use computation to hide communication, but this rarely works out perfectly in practice.</li>
+</ul>
+</div>
+<br/>
+<h3 id="so-speculative-decoding">So&hellip; speculative decoding?<a hidden class="anchor" aria-hidden="true" href="#so-speculative-decoding">#</a></h3>
+<p>What if we made generation more like prefill? How would we do this? We need our model to process more than one token at once. However, to process a token, we need to know that it is part of our output, which we are trying to determine in the first place!</p>
+<p>We can&rsquo;t generate multiple tokens simultaneously without violating joint distribution assumptions<sup id="fnref:1"><a href="#fn:1" class="footnote-ref" role="doc-noteref">1</a></sup>. To achieve accurate and faithful generation, we need to guess. To do this, we employ an ancient method of problem-solving: <em>guess and check</em>.</p>
+<p>The model we use to guess can vary. In <a href="https://arxiv.org/abs/1811.03115">Blockwise Parallel Decoding for Deep Autoregressive Models</a>, different heads on the same model predicts multiple future tokens (fine-tuned to do so), and the original head checks them. This approach still suffers from the joint distribution problem<sup id="fnref:1"><a href="#fn:1" class="footnote-ref" role="doc-noteref">1</a></sup>. Alternatively, we could perform autoregressive decoding on a smaller model.</p>
+<p>It&rsquo;s important to note that strictly more computation (floating-point operations) is done with speculative decoding, yet we can achieve higher generation throughput. The reason it still saves time is that loading the weights of the small model is much cheaper than the large one, and each token you correctly guess for the future saves an entire load of the model.</p>
+<p>Speculative decoding is simply a method to guess in a systematic way using a smaller LLM and to check in a manner that ensures our outputs are identical to using the original. This is what happens in <a href="https://arxiv.org/abs/2211.17192">Fast Inference from Transformers via Speculative Decoding</a> and <a href="https://arxiv.org/abs/2302.01318">Accelerating Large Language Model Decoding with Speculative Sampling</a>. This may remind you of rejection sampling; we generate candidates using the smaller model and employ the larger model to decide whether we want to accept or reject the sample. We will get into the details shortly.</p>
+<p>The final piece of this narrative is the mathematics that makes the outputs of this process identical to the original. Many naive algorithms accidentally oversample outputs that are more common in the smaller model, as they will be guessed by the smaller model more frequently. If you aren&rsquo;t concerned about exact replication, you can achieve slightly faster results, which is what <a href="https://arxiv.org/abs/2302.07863">Speculative Decoding with Big Little Decoder</a> does.</p>
+<br/>
+<h3 id="probability-time">Probability time<a hidden class="anchor" aria-hidden="true" href="#probability-time">#</a></h3>
+<p>For a detailed explanation, refer to <a href="https://arxiv.org/abs/2211.17192">the original paper</a>. A brief summary is provided below.</p> 
+<p> Let \( p(x) \) be the large model's probability distribution, and \( q(x) \) represent the smaller model's distribution. We'll be employing a variation of <a href="https://en.wikipedia.org/wiki/Rejection_sampling">rejection sampling</a>.</p>
+<ol>
+    <li>Sample \( n \) tokens from \( q(x) \), called \( x_1 ... x_n \).</li>
+    <li>Generate the logits of the \( n \) tokens from \( p(x) \)</li>
+    <li>For each token \( x_i \), decide whether to accept it based on the following criteria:
+        <ol>
+            <li>If \( q(x_i) < p(x_i) \), accept and move to the next token</li>
+            <li>Otherwise, sample a random number \( r \) from \( [0,1] \) and compare it to some value \( v \). We calculate \( v \) as \( \frac{p(x_i)}{q(x_i)} \). </li>
         </ol>
     </li>
+    <li>If it is less than \( v \) , accept anyways</li>
+    <li>If it was greater than \( v \), reject, break the loop, and sample the current token from the distribution \( p(x)-q(x) \) where it is positive, normalized to be a probability distribution.</li>
 </ol>
-<p>That's it! \(v\) isn't even that hard to calculate: just take \(\frac{p(x_i)}{q(x_i)}\). <a href="#note5" id="ref5">[5]</a></li> </p>
-</div>
-<p>(Comment references <sup id="fnref:4"><a href="#fn:4" class="footnote-ref" role="doc-noteref">4</a></sup> <sup id="fnref:5"><a href="#fn:5" class="footnote-ref" role="doc-noteref">5</a></sup>)</p>
-<p>​</p>
-<h3 id="practical-implementation">Practical implementation<a hidden class="anchor" aria-hidden="true" href="#practical-implementation">#</a></h3>
-<p>In practice, we have a tradeoff between the speed of our approximation model and the fidelity of its outputs. Small models
-<a href="https://arxiv.org/abs/2308.04623">This paper</a> has some fun ideas on how you might implement the algorithm in a real world setting: have a bunch of potential completions, and have stages of speculative decoding, where the simplest models capture any incredibly obvious patterns and the medium size models capture more nuanced combinations.
-​</p>
-<h3 id="potential-research-directions">Potential research directions<a hidden class="anchor" aria-hidden="true" href="#potential-research-directions">#</a></h3>
-<p>​
-Send me a link if you find a paper on this or an email if you want to chat about it! Unfortunately booked at the moment but I think these are all good ideas.
-​</p>
+<p>There are several levels of rigor to prove that this algorithm works. We now detail the most intuitive, albeit hand-wavy, explanation:</p>
+<p>Assuming \( q(x_i) > p(x_i) \), the probability that our system selects token \( x_i \) is given by \( q(x_i) \cdot \frac{p(x_i)}{q(x_i)} = p(x_i) \). When \( q(x_i) < p(x_i) \), the probability that our system selects the token is \( q(x_i) \) from the initial sampling, plus \( \frac{p(x_i)-q(x_i)}{C} \) from the resampling, where \( C \) is a normalization constant. It can be proven that \( C \) is one because the probabilities across all options must sum to one.</p>
+<p>A more rigorous proof is available in the paper, where the distribution specified in step 5 is calculated, along with the probability of any token being sampled from this distribution. The normalization constant is also derived, and the distribution is computed.</p>
+<p>In practice, we can leverage the probability distributions of the two models to estimate the number of tokens the smaller model is likely to predict. From the above explanations, the acceptance probability can be calculated as:</p>
 <ol>
-<li>Contrastive staged speculative decoding. You can approximate a big model with a medium size model. Try approximating the difference between a big model and a medium model with the difference between the outputs of a medium model and a small model! Leverage the benefits of contrastive decoding while still being speculative!</li>
-<li>Early stopping / AlBERT style speculative decoding. What if the outputs of your q(x) would save you time for computing p(x)? This is achievable as long as your small model and large model share parameters. Two easy ways to make this work are to use something like early stopping or AlBERT.</li>
-<li>Distillation to improve the fidelity of small models to large models! Actually, if you find good papers for LLM (&gt;1B model student and teacher) distillation, send them my way.</li>
-<li>Integrate PagedAttention into a branched / staged system. I think its actually extremely helpful in this use case to handle the shared prefill.</li>
+    <li>Define \( D \) as a distance metric: \( D(p,q) = \sum_x |\frac{p(x) - q(x)}{2}| = 1-\sum_x \min(p(x), q(x)) \). This is a symmetric divergence for those interested.</li>
+    <li>The acceptance probability \( \beta \) for a specific token \( x_i \) is \( \frac{p(x_i)}{q(x_i)} \) if \( q(x_i)>p(x_i) \) and 1 otherwise. This can also be represented as \( \min(1, \frac{p(x_i)}{q(x_i)})=\frac{\min(p(x_i),q(x_i))}{q(x_i)} \).</li>
+    <li>We sample from \( q(x) \), hence the general acceptance probability \( \alpha = E(\beta) = \sum_x q(x) \frac{\min(p(x),q(x))}{q(x)} =1-E(D(p,q)) \).</li>
 </ol>
+<p>If \( \gamma \) is the number of tokens predicted by the smaller model, then the expected throughput of tokens per iteration for the large model, given an arbitrary acceptance probability \( \alpha \), is visualized in the following figure:</p>
+<p><img src="./images/speculative_decoding/img3.png" alt="Speculative Decoding Visualization"></p>
+<p>Not bad! However, in the context of this paper and others, \( \alpha \) often hovers around 0.6 to 0.7. 
+The acceptance probability depends on not only how accurate the smaller model is but also its relative generation speed compared to the larger model. In the worst case scenario where the smaller model fails to predict beyond a single token at every iteration, speculative decoding would run slower than not having it in the first place! For LLMs, most works rely on using smaller network from the same model/data family. In the paper we just discussed one would use T5-XXL with T5-BASE/LARGE or LAMDA (137B) with LAMDA (2~8B), something usually in the order of magnitude smaller (in more modern model lingo terms, using LLama2-70B for the bigger model and Llama2-7B as the smaller one). Then the compute break down would look something this:</p>
+<p class="cssclass1 cssclass2">
+  <img src="./images/speculative_decoding/img4.png" alt="Logo" title="Logo title">
+  <p style="color:grey;font-size: 0.6vw;">Fig 3. Simplified transfomer trace diagram. Figure 5. from `Fast Inference from Transformers via Speculative Decoding
+'. </em>
+</p>
+<p> In summary, smaller model is typically much tinier than the original, making its guessing speed negligible compared to the larger model's checking process. The performance speed up is proprtionate to the small model's ability to approximate the larger one. </p>
+<br/>
+<h3>But... we still aren't even close!</h3>
+<p>Using speculative decoding, even with an excellent approximation, we won't generate more than 3-5 tokens per iteration, denoted as \( \gamma \) previously. This might result in a potential 3x speedup at best, which is still short from bridging the theoretical performance gap that is in the orders of magnitude larger.</p>
+<p>Efforts have been made to bridge this gap. The paper <a href="link_to_paper">"Accelerating LLM Inference with Staged Speculative Decoding"</a> introduces two main innovations:</p>
+<ol>
+    <li>Employing multiple levels of speculative decoding.</li>
+    <li>Generating multiple branched predictions simultaneously.</li>
+</ol>
+<p>The latter is somewhat challenging due to nuances in KV caching. The paper doesn't disclose their acceptance probability, and their outcomes are modest. Their method increase the speedup from 2.5x to 3x, but at the expense of introducing substantial complexity.</p>
+<p>Personally, I believe there's significant potential yet to be unlocked in this domain. If I were to speculate on the sources of future advancements, I'd anticipate the following:</p>
+<ol>
+    <li>Early stopping or AlBERT-style strategies: If the logits of the smaller model could expedite the final decoding.
+        <ol type="A">
+            <li>This could be further enhanced using distillation.</li>
+            <li>One might also adopt aggressive staging, performing only the essential computation needed to reject a proposal.</li>
+        </ol>
+    </li>
+    <li>Adoption of techniques like Paged Attention to explore multiple branches efficiently at once.</li>
+    <li>Implementing structured pruning in tandem with distillation when designing the smaller model. This approach might yield efficient models boasting higher acceptance probabilities.</li>
+</ol>
+<br/>
+<h3 id="conclusion">Conclusion<a hidden class="anchor" aria-hidden="true" href="#conclusion">#</a></h3>
+<p>This post is close to 3000 words, when blog posts are usually kept to the smaller side of a thousand. Congratulations on reading this far, and I hoped you learned something!</p>
 <section class="footnotes" role="doc-endnotes">
 <hr>
 <ol>
 <li id="fn:1" role="doc-endnote">
-<p>the cuda documentation is actually very good. I know this sounds like I am recommending a torture device, but the first few sections provide a great overview of the architecture and abstractions necessary if you want to go deeper in understanding the topics I touch on today&#160;<a href="#fnref:1" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
-</li>
-<li id="fn:2" role="doc-endnote">
-<p>because hell is empty and all the devils are here this team of workers is called a &ldquo;streaming multiprocessor&rdquo;, or SM by nvidia. This is an issue because the memory that the members of the team is called &ldquo;shared memory&rdquo;, abbreviated &ldquo;SM&rdquo; by everyone but nvidia.
-​&#160;<a href="#fnref:2" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
-</li>
-<li id="fn:3" role="doc-endnote">
-<p>in reality there is a complex corporate structure in the GPU, i.e. there are multiple layers of hierarchy on both the hardware and software side.  One worker is a thread. A GPU is divided into GPU Processing Cluster, each of which can contain a thread block cluster. The thread block cluster is subdivided into thread blocks, which each run on a streaming multiprocessor. The individual thread blocks are subdivided into warps, which consist of a set of threads which all run at the same time.
-​&#160;<a href="#fnref:3" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
-</li>
-<li id="fn:4" role="doc-endnote">
-<p>Yes this isn&rsquo;t a probability distribution, yes you need to normalize it. The normalization makes the algorithm look more complicated than it is, and while this is wrong it is easier to understand. I wrote the entire algorithm without one division sign!&#160;<a href="#fnref:4" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
-</li>
-<li id="fn:5" role="doc-endnote">
-<p>Proving this is actually equivalent is a good way to really understand the algorithm. Ideally you can do so with less hand waving than the paper itself.&#160;<a href="#fnref:5" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+<p>Imagine you are playing a guessing game with an LLM of the city you grew up in. Given that you are reading this article, it gives a 30% probability of the bay area, and 20% of new york city. If you were generating multiple tokens at once, you might say that for the first token, <em>new</em> and <em>san</em> have 20/30% probability, and for the second <em>york</em> and <em>fran_</em> have 20/30% probability. A sampling algorithm might pick san york city or even new francity, which are impossible.&#160;<a href="#fnref:1" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
 </li>
 </ol>
 </section>
@@ -293,6 +368,13 @@ Send me a link if you find a paper on this or an email if you want to chat about
     <ul class="post-tags">
       <li><a href="https://minyoungg.github.io/mlscale/tags/first.html">first</a></li>
     </ul>
+<nav class="paginav">
+  <a class="prev" href="https://minyoungg.github.io/mlscale/posts/moe.html">
+    <span class="title">« Prev Page</span>
+    <br>
+    <span>Mixture of Experts (MoE)</span>
+  </a>
+</nav>
 
 
 <div class="share-buttons">
@@ -345,7 +427,7 @@ Send me a link if you find a paper on this or an email if you want to chat about
     </main>
     
 <footer class="footer">
-    <span>&copy; 2023 <a href="https://minyoungg.github.io/mlscale/">scale &#43; algorithms</a></span>
+    <span>&copy; 2023 <a href="https://minyoungg.github.io/mlscale/"></a></span>
     <span>
         Powered by
         <a href="https://gohugo.io/" rel="noopener noreferrer" target="_blank">Hugo</a> &
