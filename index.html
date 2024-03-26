@@ -57,10 +57,10 @@ Author: &nbspTheme PaperMod
 </script>
 </head>
 
-<body class="list dark" id="top">
+<body class="list" id="top">
 <script>
-    if (localStorage.getItem("pref-theme") === "light") {
-        document.body.classList.remove('dark')
+    if (localStorage.getItem("pref-theme") === "dark") {
+        document.body.classList.add('dark');
     }
 
 </script>
@@ -98,10 +98,10 @@ Author: &nbspTheme PaperMod
 <main class="main"> 
 <article class="first-entry home-info">
     <header class="entry-header">
-        <h1>Scalable and Efficient ML</h1>
+        <h1>MIT ATLAS</h1>
     </header>
     <section class="entry-content">
-        <p>▸ We are a cross-lab MIT graduate student collective working on AI research. <br>▸ The group is open to all MIT affiliates and to participate contact the <a href=https://minyounghuh.com/> organizer</a>.</p>
+        <p>▸ We are a cross-lab MIT graduate student collective working on AI research with a focus on <b>Algorithms That Learn and Scale</b>. <br>▸ The group is open to all MIT affiliates, and to participate, contact the <a href=https://minyounghuh.com/> organizer</a>. We currently host bi-weekly seminars and will have research socials in the future. <br>▸ Our coffee ☕ &amp; baked goods 🍰 are currently funded by generous donations from <a href="https://web.mit.edu/phillipi/">Phillip Isola</a> and <a href="https://people.csail.mit.edu/yoonkim/">Yoon Kim</a>. <br>▸ We are looking for sponsors to increase our seminar snack capacity, research socials, and funding speaker travels. Please contact the organizers if interested.</p>
     </section>
     <footer class="entry-footer">
         <div class="social-icons">
@@ -116,10 +116,35 @@ Author: &nbspTheme PaperMod
 
 <article class="post-entry">
     <header class="entry-header">
-        <h2>Discussion Schedule</h2>
+        <h2>Speaker schedule</h2>
     </header>
     <section class="entry-schedule">
         <ul>
+            <li class="schedule-item">
+                <span class="schedule-date">04/03</span>
+                <span class="schedule-title">TBA</span>
+                <span class="schedule-speaker">Luca Soldaini (AI2)</span>
+            </li>
+            <li class="schedule-item">
+                <span class="schedule-date">03/20</span>
+                <span class="schedule-title">Efficient Deep Learning with Sparsity: Algorithms, Systems, and Applications</span>
+                <span class="schedule-speaker">Zhijian Liu</span>
+            </li>
+            <li class="schedule-item">
+                <span class="schedule-date">03/12</span>
+                <span class="schedule-title">Building and Deploying Large Language Model Applications Efficiently and Verifiably</span>
+                <span class="schedule-speaker">Ying Sheng (Stanford)</span>
+            </li>
+            <li class="schedule-item">
+                <span class="schedule-date">03/06</span>
+                <span class="schedule-title">In-Context Language Learning and N-gram Heads</span>
+                <span class="schedule-speaker">Ekin Akyürek</span>
+            </li>
+            <li class="schedule-item">
+                <span class="schedule-date">02/21</span>
+                <span class="schedule-title">Neurons, norms and number systems</span>
+                <span class="schedule-speaker">Jeremy Bernstein</span>
+            </li>
             <li class="schedule-item">
                 <span class="schedule-date">11/28</span>
                 <span class="schedule-title">Sparsity in Transformers</span>
@@ -154,50 +179,9 @@ Author: &nbspTheme PaperMod
     </section>
 </article>
 
+
 <hr>
 <br>
-
-<article class="post-entry"> 
-  <header class="entry-header">
-    <h2>Critical batch-size in deep learning
-    </h2>
-  </header>
-  <section class="entry-content">
-    <p>What batch-size should you use for your model? What does the batch-size tell you about your task? This post discusses one main aspects of the scaling law....</p>
-  </section>
-  <footer class="entry-footer"><span title='2023-11-01 11:30:03 +0000 +0000'>November 1, 2023</span>&nbsp;·&nbsp;22 min&nbsp;·&nbsp;
-Author: &nbspMinyoung Huh
-&nbsp | &nbsp Editor: &nbspN/A</footer>
-  <a class="entry-link" aria-label="post link to Critical batch-size in deep learning" href="https://atlas-mlc.github.io/posts/critical-batch-size.html"></a>
-</article>
-
-<article class="post-entry"> 
-  <header class="entry-header">
-    <h2>Mixture of Experts (MoE)
-    </h2>
-  </header>
-  <section class="entry-content">
-    <p>MoE are rumored to be a critical components in scaling up to a trillion parameter model. By routing tokens to specialized modular functions, it enables models to have representational power of a much larger model than what is used for prediction. We will be discussing how MoE works and its recent advances in this literature...</p>
-  </section>
-  <footer class="entry-footer"><span title='2023-10-04 11:30:03 +0000 +0000'>October 4, 2023</span>&nbsp;·&nbsp;11 min&nbsp;·&nbsp;
-Author: &nbspJyo Pari
-&nbsp | &nbsp Editor: &nbspN/A</footer>
-  <a class="entry-link" aria-label="post link to Mixture of Experts (MoE)" href="https://atlas-mlc.github.io/posts/moe.html"></a>
-</article>
-
-<article class="post-entry"> 
-  <header class="entry-header">
-    <h2>Speculative decoding
-    </h2>
-  </header>
-  <section class="entry-content">
-    <p>A brief overview of speculative decoding, detailing the roots of LLM inference slowdowns and how algorithmic level changes can improve generation speed!...</p>
-  </section>
-  <footer class="entry-footer"><span title='2023-09-13 00:00:00 +0000 UTC'>September 13, 2023</span>&nbsp;·&nbsp;14 min&nbsp;·&nbsp;
-Author: &nbspAni Nrusimha
-&nbsp | &nbsp Editor: &nbspMinyoung Huh</footer>
-  <a class="entry-link" aria-label="post link to Speculative decoding" href="https://atlas-mlc.github.io/posts/speculative-decoding.html"></a>
-</article>
     </main>
     
 <footer class="footer">
