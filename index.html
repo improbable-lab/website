@@ -12,7 +12,7 @@
 Author: &nbspTheme PaperMod
 &nbsp | &nbsp Editor: &nbsp">
 <link rel="canonical" href="https://atlas-mlc.github.io/" />
-<link crossorigin="anonymous" href="https://atlas-mlc.github.io/assets/css/stylesheet.min.012b9a75b78c05a5b3111bea2ffe80bb9c7a658de709126230287fb6db7016a7.css" integrity="" rel="preload stylesheet" as="style">
+<link crossorigin="anonymous" href="https://atlas-mlc.github.io/assets/css/stylesheet.min.32cc4172d2b094289d48fe2ec5fca168cb348163016804d75000ba3594a2426b.css" integrity="" rel="preload stylesheet" as="style">
 <link rel="icon" href="https://atlas-mlc.github.io/favicon.ico">
 <link rel="icon" type="image/png" sizes="16x16" href="https://atlas-mlc.github.io/favicon-16x16.png">
 <link rel="icon" type="image/png" sizes="32x32" href="https://atlas-mlc.github.io/favicon-32x32.png">
@@ -20,7 +20,7 @@ Author: &nbspTheme PaperMod
 <link rel="mask-icon" href="https://atlas-mlc.github.io/safari-pinned-tab.svg">
 <meta name="theme-color" content="#2e2e33">
 <meta name="msapplication-TileColor" content="#2e2e33">
-<meta name="generator" content="Hugo 0.119.0">
+<meta name="generator" content="Hugo 0.80.0" />
 <link rel="alternate" type="application/rss+xml" href="https://atlas-mlc.github.io/index.xml">
 <link rel="alternate" type="application/json" href="https://atlas-mlc.github.io/index.json">
 <noscript>
@@ -57,10 +57,10 @@ Author: &nbspTheme PaperMod
 </script>
 </head>
 
-<body class="list" id="top">
+<body class="list dark" id="top">
 <script>
-    if (localStorage.getItem("pref-theme") === "dark") {
-        document.body.classList.add('dark');
+    if (localStorage.getItem("pref-theme") === "light") {
+        document.body.classList.remove('dark')
     }
 
 </script>
@@ -98,10 +98,10 @@ Author: &nbspTheme PaperMod
 <main class="main"> 
 <article class="first-entry home-info">
     <header class="entry-header">
-        <h1>MIT ATLAS</h1>
+        <h1>Scalable and Efficient ML</h1>
     </header>
     <section class="entry-content">
-        <p>▸ We are a cross-lab MIT graduate student collective working on AI research with a focus on <b>Algorithms That Learn and Scale</b>. <br>▸ The group is open to all MIT affiliates, and to participate, contact the <a href=https://minyounghuh.com/> organizer</a>. We currently host bi-weekly seminars and will have research socials in the future. <br>▸ Our coffee ☕ &amp; baked goods 🍰 are currently funded by generous donations from <a href="https://web.mit.edu/phillipi/">Phillip Isola</a> and <a href="https://people.csail.mit.edu/yoonkim/">Yoon Kim</a>. <br>▸ We are looking for sponsors to increase our seminar snack capacity, fund research socials, and reimburse speaker travels. Please contact the organizers if interested.</p>
+        <p>▸ We are a cross-lab MIT graduate student collective working on AI research. <br>▸ The group is open to all MIT affiliates and to participate contact the <a href=https://minyounghuh.com/> organizer</a>.</p>
     </section>
     <footer class="entry-footer">
         <div class="social-icons">
@@ -116,13 +116,23 @@ Author: &nbspTheme PaperMod
 
 <article class="post-entry">
     <header class="entry-header">
-        <h2>Speaker schedule</h2>
+        <h2>Discussion Schedule</h2>
     </header>
     <section class="entry-schedule">
         <ul>
             <li class="schedule-item">
+                <span class="schedule-date">05/01</span>
+                <span class="schedule-title">Towards a Machine Capable of Learning Everything</span>
+                <span class="schedule-speaker">Hao Liu (Berkeley)</span>
+            </li>
+            <li class="schedule-item">
+                <span class="schedule-date">04/17</span>
+                <span class="schedule-title">Reinforcement Learning From Human Feedback</span>
+                <span class="schedule-speaker">Idan Shenfeld</span>
+            </li>
+            <li class="schedule-item">
                 <span class="schedule-date">04/03</span>
-                <span class="schedule-title">TBA</span>
+                <span class="schedule-title">The Quest to build an (O)pen (L)anguage (Mo)del</span>
                 <span class="schedule-speaker">Luca Soldaini (AI2)</span>
             </li>
             <li class="schedule-item">
@@ -182,6 +192,48 @@ Author: &nbspTheme PaperMod
 
 <hr>
 <br>
+
+<article class="post-entry"> 
+  <header class="entry-header">
+    <h2>Critical batch-size in deep learning
+    </h2>
+  </header>
+  <section class="entry-content">
+    <p>What batch-size should you use for your model? What does the batch-size tell you about your task? This post discusses one main aspects of the scaling law....</p>
+  </section>
+  <footer class="entry-footer"><span title='2023-11-01 11:30:03 +0000 UTC'>November 1, 2023</span>&nbsp;·&nbsp;23 min&nbsp;·&nbsp;
+Author: &nbspMinyoung Huh
+&nbsp | &nbsp Editor: &nbspN/A</footer>
+  <a class="entry-link" aria-label="post link to Critical batch-size in deep learning" href="https://atlas-mlc.github.io/posts/critical-batch-size.html"></a>
+</article>
+
+<article class="post-entry"> 
+  <header class="entry-header">
+    <h2>Mixture of Experts (MoE)
+    </h2>
+  </header>
+  <section class="entry-content">
+    <p>MoE are rumored to be a critical components in scaling up to a trillion parameter model. By routing tokens to specialized modular functions, it enables models to have representational power of a much larger model than what is used for prediction. We will be discussing how MoE works and its recent advances in this literature...</p>
+  </section>
+  <footer class="entry-footer"><span title='2023-10-04 11:30:03 +0000 UTC'>October 4, 2023</span>&nbsp;·&nbsp;11 min&nbsp;·&nbsp;
+Author: &nbspJyo Pari
+&nbsp | &nbsp Editor: &nbspN/A</footer>
+  <a class="entry-link" aria-label="post link to Mixture of Experts (MoE)" href="https://atlas-mlc.github.io/posts/moe.html"></a>
+</article>
+
+<article class="post-entry"> 
+  <header class="entry-header">
+    <h2>Speculative decoding
+    </h2>
+  </header>
+  <section class="entry-content">
+    <p>A brief overview of speculative decoding, detailing the roots of LLM inference slowdowns and how algorithmic level changes can improve generation speed!...</p>
+  </section>
+  <footer class="entry-footer"><span title='2023-09-13 00:00:00 +0000 UTC'>September 13, 2023</span>&nbsp;·&nbsp;14 min&nbsp;·&nbsp;
+Author: &nbspAni Nrusimha
+&nbsp | &nbsp Editor: &nbspMinyoung Huh</footer>
+  <a class="entry-link" aria-label="post link to Speculative decoding" href="https://atlas-mlc.github.io/posts/speculative-decoding.html"></a>
+</article>
     </main>
     
 <footer class="footer">
