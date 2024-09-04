@@ -2,29 +2,29 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
-    <loc>https://atlas-mlc.github.io/posts/critical-batch-size.html</loc>
+    <loc>https://scale-ml.org/posts/critical-batch-size.html</loc>
     <lastmod>2023-11-01T11:30:03+00:00</lastmod>
   </url><url>
-    <loc>https://atlas-mlc.github.io/posts/moe.html</loc>
+    <loc>https://scale-ml.org/posts/moe.html</loc>
     <lastmod>2023-10-04T11:30:03+00:00</lastmod>
   </url><url>
-    <loc>https://atlas-mlc.github.io/posts/speculative-decoding.html</loc>
+    <loc>https://scale-ml.org/posts/speculative-decoding.html</loc>
     <lastmod>2023-09-13T00:00:00+00:00</lastmod>
   </url><url>
-    <loc>https://atlas-mlc.github.io/</loc>
+    <loc>https://scale-ml.org/</loc>
     <lastmod>2023-11-01T11:30:03+00:00</lastmod>
   </url><url>
-    <loc>https://atlas-mlc.github.io/tags/first.html</loc>
+    <loc>https://scale-ml.org/tags/first.html</loc>
     <lastmod>2023-11-01T11:30:03+00:00</lastmod>
   </url><url>
-    <loc>https://atlas-mlc.github.io/posts.html</loc>
+    <loc>https://scale-ml.org/posts.html</loc>
     <lastmod>2023-11-01T11:30:03+00:00</lastmod>
   </url><url>
-    <loc>https://atlas-mlc.github.io/tags.html</loc>
+    <loc>https://scale-ml.org/tags.html</loc>
     <lastmod>2023-11-01T11:30:03+00:00</lastmod>
   </url><url>
-    <loc>https://atlas-mlc.github.io/categories.html</loc>
+    <loc>https://scale-ml.org/categories.html</loc>
   </url><url>
-    <loc>https://atlas-mlc.github.io/series.html</loc>
+    <loc>https://scale-ml.org/series.html</loc>
   </url>
 </urlset>

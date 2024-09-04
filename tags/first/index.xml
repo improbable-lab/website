@@ -1,35 +1,36 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
   <channel>
-    <title>first on </title>
-    <link>https://atlas-mlc.github.io/tags/first.html</link>
-    <description>Recent content in first on </description>
+    <title>First on </title>
+    <link>https://scale-ml.org/tags/first.html</link>
+    <description>Recent content in First on </description>
     <generator>Hugo -- gohugo.io</generator>
-    <lastBuildDate>Wed, 01 Nov 2023 11:30:03 +0000</lastBuildDate><atom:link href="https://atlas-mlc.github.io/tags/first/index.xml" rel="self" type="application/rss+xml" />
+    <language>en</language>
+    <lastBuildDate>Wed, 01 Nov 2023 11:30:03 +0000</lastBuildDate><atom:link href="https://scale-ml.org/tags/first/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Critical batch-size in deep learning</title>
-      <link>https://atlas-mlc.github.io/posts/critical-batch-size.html</link>
+      <link>https://scale-ml.org/posts/critical-batch-size.html</link>
       <pubDate>Wed, 01 Nov 2023 11:30:03 +0000</pubDate>
       
-      <guid>https://atlas-mlc.github.io/posts/critical-batch-size.html</guid>
+      <guid>https://scale-ml.org/posts/critical-batch-size.html</guid>
       <description>What batch-size should you use for your model? What does the batch-size tell you about your task? This post discusses one main aspects of the scaling law.</description>
     </item>
     
     <item>
       <title>Mixture of Experts (MoE)</title>
-      <link>https://atlas-mlc.github.io/posts/moe.html</link>
+      <link>https://scale-ml.org/posts/moe.html</link>
       <pubDate>Wed, 04 Oct 2023 11:30:03 +0000</pubDate>
       
-      <guid>https://atlas-mlc.github.io/posts/moe.html</guid>
+      <guid>https://scale-ml.org/posts/moe.html</guid>
       <description>MoE are rumored to be a critical components in scaling up to a trillion parameter model. By routing tokens to specialized modular functions, it enables models to have representational power of a much larger model than what is used for prediction. We will be discussing how MoE works and its recent advances in this literature</description>
     </item>
     
     <item>
       <title>Speculative decoding</title>
-      <link>https://atlas-mlc.github.io/posts/speculative-decoding.html</link>
+      <link>https://scale-ml.org/posts/speculative-decoding.html</link>
       <pubDate>Wed, 13 Sep 2023 00:00:00 +0000</pubDate>
       
-      <guid>https://atlas-mlc.github.io/posts/speculative-decoding.html</guid>
+      <guid>https://scale-ml.org/posts/speculative-decoding.html</guid>
       <description>A brief overview of speculative decoding, detailing the roots of LLM inference slowdowns and how algorithmic level changes can improve generation speed!</description>
     </item>
     
